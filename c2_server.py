@@ -49,7 +49,9 @@ logger = logging.getLogger(__name__)
 
 # ======================== إعدادات الأمان ========================
 API_KEY = "c2_super_secret_key_2026_123456"
-RATE_LIMIT_REQUESTS = 20
+# Dashboard traffic arrives from 127.0.0.1 (Flask proxy), so ALL users share
+# one bucket. 120/min = 2 req/s gives comfortable headroom for polling + actions.
+RATE_LIMIT_REQUESTS = 120
 RATE_LIMIT_WINDOW = 60
 
 rate_limits = defaultdict(list)

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { SWRProvider } from '@/context/SWRProvider';
 import { ToastProvider } from '@/context/ToastContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
@@ -26,11 +27,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans antialiased bg-c2-bg text-c2-text`}>
-        <ToastProvider>
-          <DashboardLayout>
-            {children}
-          </DashboardLayout>
-        </ToastProvider>
+        <SWRProvider>
+          <ToastProvider>
+            <DashboardLayout>
+              {children}
+            </DashboardLayout>
+          </ToastProvider>
+        </SWRProvider>
       </body>
     </html>
   );
