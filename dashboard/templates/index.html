@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>C2 Dashboard</title>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    crossorigin="anonymous"
+  />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ══ Sidebar ══════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <div class="sidebar-brand">
+      <span class="brand-skull">☠</span>
+      <span>C2 Control</span>
+    </div>
+
+    <nav class="sidebar-nav" id="sidebar-nav">
+      <a class="nav-link active" data-view="overview">
+        <i class="fa-solid fa-chart-line"></i> Overview
+      </a>
+      <a class="nav-link" data-view="clients">
+        <i class="fa-solid fa-laptop"></i> Clients
+      </a>
+      <a class="nav-link" data-view="commands">
+        <i class="fa-solid fa-terminal"></i> Commands
+      </a>
+      <a class="nav-link" data-view="logs">
+        <i class="fa-solid fa-scroll"></i> Logs
+      </a>
+      <a class="nav-link" data-view="files">
+        <i class="fa-solid fa-folder-open"></i> Files
+      </a>
+      <a class="nav-link" data-view="telegram">
+        <i class="fa-brands fa-telegram"></i> Telegram
+      </a>
+    </nav>
+
+    <!-- Process quick-controls -->
+    <div class="sidebar-procs">
+      <div class="proc-row">
+        <span class="proc-label">C2 Server</span>
+        <span class="dot" id="dot-server" title="Server status"></span>
+        <div class="proc-btns">
+          <button title="Start server" onclick="startProcess('server')">▶</button>
+          <button title="Stop server"  onclick="stopProcess('server')">■</button>
+        </div>
+      </div>
+      <div class="proc-row">
+        <span class="proc-label">Telegram Bot</span>
+        <span class="dot" id="dot-bot" title="Bot status"></span>
+        <div class="proc-btns">
+          <button title="Start bot" onclick="startProcess('bot')">▶</button>
+          <button title="Stop bot"  onclick="stopProcess('bot')">■</button>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ══ Main area ═════════════════════════════════════════════════════ -->
+  <div class="main-wrap">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h2 id="page-title">Overview</h2>
+      </div>
+      <div class="topbar-right">
+        <div class="c2-indicator">
+          <span class="dot" id="dot-c2"></span>
+          <span id="c2-label">Checking…</span>
+        </div>
+        <button class="btn btn-ghost" onclick="exportLogs()" title="Export logs as CSV">
+          <i class="fa-solid fa-download"></i> Export
+        </button>
+        <button class="btn btn-ghost btn-red" onclick="clearLogs()" title="Clear all logs">
+          <i class="fa-solid fa-trash"></i> Clear
+        </button>
+        <button class="btn btn-ghost" onclick="refresh()" title="Refresh view">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- View content injected by JS -->
+    <main class="view-content" id="view-content"></main>
+
+  </div>
+
+  <!-- ══ Toast notifications ════════════════════════════════════════════ -->
+  <div id="toast-wrap"></div>
+
+  <!-- ══ Modal ═════════════════════════════════════════════════════════ -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Dashboard API key injected by Flask — consumed by app.js for auth headers -->
+  <script>const DASHBOARD_KEY = "{{ dashboard_key }}";</script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

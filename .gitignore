@@ -1,0 +1,8 @@
+/.claude
+/متطلبات تشغيل المشروع.txt
+node_modules
+node_modules/
+.next/
+.env
+__pycache__/
+*.pyc
