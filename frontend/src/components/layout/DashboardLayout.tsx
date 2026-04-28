@@ -41,14 +41,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Topbar />
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <AnimatePresence mode="wait">
+          {/* initial={false} prevents SSR from rendering opacity:0, which causes blank pages */}
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={pathname}
               variants={pageVariants}
               initial="initial"
               animate="animate"
               exit="exit"
-              className="h-full"
+              className="min-h-full"
             >
               {children}
             </motion.div>

@@ -1,0 +1,8 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/clients/page": "app/clients/page.js",
+  "/logs/page": "app/logs/page.js",
+  "/commands/page": "app/commands/page.js",
+  "/page": "app/page.js",
+  "/telegram/page": "app/telegram/page.js"
+}

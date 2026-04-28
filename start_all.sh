@@ -197,8 +197,9 @@ if [[ ! -d "node_modules" ]]; then
         || { err "npm install failed — check logs"; exit 1; }
 fi
 
-# Build for production if .next/BUILD_ID is absent or FORCE_BUILD is set
-if [[ ! -f ".next/BUILD_ID" ]] || [[ "$FORCE_BUILD" == "true" ]]; then
+# Build for production if .next-prod/BUILD_ID is absent or FORCE_BUILD is set
+# (distDir=.next-prod avoids Windows NTFS file-lock on .next/trace)
+if [[ ! -f ".next-prod/BUILD_ID" ]] || [[ "$FORCE_BUILD" == "true" ]]; then
     info "Building Next.js for production (this takes ~60–120 s) ..."
     info "Tail build log: tail -f /tmp/frontend_build.log"
 
@@ -214,7 +215,7 @@ if [[ ! -f ".next/BUILD_ID" ]] || [[ "$FORCE_BUILD" == "true" ]]; then
     fi
     ok "Production build complete"
 else
-    info "Skipping build (.next/BUILD_ID exists)"
+    info "Skipping build (.next-prod/BUILD_ID exists)"
     info "  Use FORCE_BUILD=true ./start_all.sh to rebuild"
 fi
 
