@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useSpring, useTransform, motion, useMotionValue } from 'framer-motion';
 
 interface AnimatedCounterProps {
@@ -17,6 +17,7 @@ export function AnimatedCounter({
   formatValue,
 }: AnimatedCounterProps) {
   const motionValue = useMotionValue(0);
+  // springValue tracks motionValue with spring physics
   const springValue = useSpring(motionValue, {
     duration: duration * 1000,
     bounce: 0,
@@ -24,17 +25,13 @@ export function AnimatedCounter({
 
   const displayValue = useTransform(springValue, (latest) => {
     const rounded = Math.round(latest);
-    if (formatValue) return formatValue(rounded);
-    return rounded.toLocaleString();
+    return formatValue ? formatValue(rounded) : rounded.toLocaleString();
   });
 
-  const prevValue = useRef(0);
-
   useEffect(() => {
-    motionValue.set(prevValue.current);
-    springValue.set(value);
-    prevValue.current = value;
-  }, [value, motionValue, springValue]);
+    // Setting motionValue causes springValue to animate toward it
+    motionValue.set(value);
+  }, [value, motionValue]);
 
   return (
     <motion.span className={className}>

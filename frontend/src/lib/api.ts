@@ -10,7 +10,7 @@ import type {
   TelegramMessage,
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Key is injected at build time from NEXT_PUBLIC_DASHBOARD_KEY
 const DASHBOARD_KEY = process.env.NEXT_PUBLIC_DASHBOARD_KEY || '';
 
 class ApiError extends Error {
@@ -22,22 +22,21 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * All paths are relative (/api/...) so they route through the Next.js
+ * rewrite proxy → Flask backend. This works from any device on the LAN.
+ */
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_URL}${path}`;
-
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Dashboard-Key': DASHBOARD_KEY,
     ...(options.headers as Record<string, string>),
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(path, { ...options, headers });
 
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -50,7 +49,7 @@ async function request<T>(
     throw new ApiError(errorMessage, response.status);
   }
 
-  // Handle non-JSON responses (e.g., CSV export)
+  // Handle CSV export
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('text/csv')) {
     return response.blob() as unknown as T;
@@ -64,37 +63,30 @@ async function request<T>(
 }
 
 export const api = {
-  // Stats
   async getStats(): Promise<Stats> {
     return request<Stats>('/api/stats');
   },
 
-  // Clients
   async getClients(): Promise<ClientsMap> {
     return request<ClientsMap>('/api/clients');
   },
 
-  // Logs
   async getLogs(): Promise<Log[]> {
     return request<Log[]>('/api/logs');
   },
 
-  // Command history
   async getCommandHistory(): Promise<Command[]> {
     return request<Command[]>('/api/commands/history');
   },
 
-  // Process status
   async getProcessStatus(): Promise<ProcessStatus> {
     return request<ProcessStatus>('/api/processes/status');
   },
 
-  // Health
   async getHealth(): Promise<HealthStatus> {
     return request<HealthStatus>('/api/health');
   },
 
-  // Send command
   async sendCommand(payload: CommandPayload): Promise<{ success: boolean; message?: string }> {
     return request('/api/command', {
       method: 'POST',
@@ -102,14 +94,10 @@ export const api = {
     });
   },
 
-  // Clear logs
   async clearLogs(): Promise<{ success: boolean }> {
-    return request('/api/clear', {
-      method: 'DELETE',
-    });
+    return request('/api/clear', { method: 'DELETE' });
   },
 
-  // Telegram
   async sendTelegramMessage(payload: TelegramMessage): Promise<{ success: boolean }> {
     return request('/api/telegram/send', {
       method: 'POST',
@@ -124,37 +112,26 @@ export const api = {
     });
   },
 
-  // Process control
   async startProcess(type: 'server' | 'bot'): Promise<{ success: boolean }> {
-    return request(`/api/process/${type}/start`, {
-      method: 'POST',
-    });
+    return request(`/api/process/${type}/start`, { method: 'POST' });
   },
 
   async stopProcess(type: 'server' | 'bot'): Promise<{ success: boolean }> {
-    return request(`/api/process/${type}/stop`, {
-      method: 'POST',
-    });
+    return request(`/api/process/${type}/stop`, { method: 'POST' });
   },
 
-  // Export logs
   async exportLogs(): Promise<Blob> {
-    const url = `${API_URL}/api/export/logs`;
-    const response = await fetch(url, {
-      headers: {
-        'X-Dashboard-Key': DASHBOARD_KEY,
-      },
+    const response = await fetch('/api/export/logs', {
+      headers: { 'X-Dashboard-Key': DASHBOARD_KEY },
     });
-
     if (!response.ok) {
       throw new ApiError('Failed to export logs', response.status);
     }
-
     return response.blob();
   },
 };
 
-// SWR fetcher
+/** SWR fetcher — uses relative URL through Next.js rewrites */
 export const fetcher = async <T>(url: string): Promise<T> => {
   const response = await fetch(url, {
     headers: {

@@ -14,7 +14,7 @@ export interface Client {
 export type ClientsMap = Record<string, Client>;
 
 export interface Log {
-  timestamp: string;
+  timestamp: string | number; // ISO string or Unix float seconds from backend
   type: string;
   data: string;
   client_id: string;

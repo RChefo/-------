@@ -6,8 +6,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function timeSince(dateStr: string): string {
-  const date = new Date(dateStr);
+/** Parse a timestamp that may be a Unix float (seconds) or an ISO string. */
+function parseTimestamp(ts: string | number): Date {
+  if (typeof ts === 'number') return new Date(ts * 1000);
+  const d = new Date(ts);
+  if (!isNaN(d.getTime())) return d;
+  // Fallback: treat as numeric string (e.g. "1714329600.456")
+  const n = parseFloat(ts);
+  return isNaN(n) ? new Date(NaN) : new Date(n * 1000);
+}
+
+export function timeSince(ts: string | number): string {
+  const date = parseTimestamp(ts);
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -32,10 +42,10 @@ export function timeSince(dateStr: string): string {
   return 'just now';
 }
 
-export function formatTime(dateStr: string): string {
+export function formatTime(ts: string | number): string {
   try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
+    const date = parseTimestamp(ts);
+    if (isNaN(date.getTime())) return String(ts);
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -43,14 +53,14 @@ export function formatTime(dateStr: string): string {
       hour12: false,
     });
   } catch {
-    return dateStr;
+    return String(ts);
   }
 }
 
-export function formatDateTime(dateStr: string): string {
+export function formatDateTime(ts: string | number): string {
   try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
+    const date = parseTimestamp(ts);
+    if (isNaN(date.getTime())) return String(ts);
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -60,7 +70,7 @@ export function formatDateTime(dateStr: string): string {
       hour12: false,
     });
   } catch {
-    return dateStr;
+    return String(ts);
   }
 }
 
@@ -93,7 +103,7 @@ export function buildActivityData(logs: Log[]): ActivityDataPoint[] {
   // Count logs per hour
   logs.forEach((log) => {
     try {
-      const logDate = new Date(log.timestamp);
+      const logDate = parseTimestamp(log.timestamp);
       const diffMs = now.getTime() - logDate.getTime();
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
 

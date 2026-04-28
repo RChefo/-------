@@ -425,7 +425,7 @@ def get_stats():
         "total_clients": len(clients),
         "total_logs": len(clients_data),
         "pending_commands": len([c for c in commands if isinstance(c, str)]),
-        "server_uptime": f"{int(uptime//3600)}h {int((uptime%3600)//60)}m",
+        "server_uptime": round(uptime),
         "bot_status": check_bot_status()
     })
 

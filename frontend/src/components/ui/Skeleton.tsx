@@ -23,7 +23,7 @@ const shimmerVariants = {
   },
 };
 
-function SkeletonBase({ className }: { className?: string }) {
+function SkeletonBase({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <motion.div
       variants={shimmerVariants}
@@ -35,9 +35,7 @@ function SkeletonBase({ className }: { className?: string }) {
         'bg-[length:200%_100%]',
         className
       )}
-      style={{
-        backgroundSize: '200% 100%',
-      }}
+      style={{ backgroundSize: '200% 100%', ...style }}
     />
   );
 }
