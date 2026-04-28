@@ -27,6 +27,10 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DASHBOARD_KEY="${DASHBOARD_KEY:-dashboard_secret_2026}"
 export C2_SERVER_URL="${C2_SERVER_URL:-http://localhost:5000}"
 
+# ── Virtual environment path ──────────────────────────────────────────────
+VENV="$PROJECT_DIR/venv"
+PYTHON="$VENV/bin/python"
+
 # ── PID file (written here, read by stop_all.sh) ─────────────────────────
 PID_FILE="/tmp/c2_project_pids.env"
 
@@ -40,6 +44,23 @@ echo -e "  ${DIM}Key:     ${DASHBOARD_KEY:0:8}…${NC}\n"
 # ═════════════════════════════════════════════════════════════════════════
 # STEP 1 — Kill any stale processes
 # ═════════════════════════════════════════════════════════════════════════
+section "Setting up Python virtual environment"
+
+if [[ ! -d "$VENV" ]]; then
+    info "Creating venv at ${VENV}..."
+    python3 -m venv "$VENV" || { err "python3 -m venv failed"; exit 1; }
+    ok "venv created"
+else
+    info "venv already exists — skipping creation"
+fi
+
+if [[ -f "$PROJECT_DIR/requirements.txt" ]]; then
+    info "Installing Python dependencies into venv..."
+    "$PYTHON" -m pip install -q -r "$PROJECT_DIR/requirements.txt" \
+        && ok "Dependencies installed" \
+        || warn "pip install had warnings (check manually)"
+fi
+
 section "Cleaning up stale processes"
 
 _kill() {
@@ -74,7 +95,7 @@ if [[ ! -f "$C2_SCRIPT" ]]; then
     exit 1
 fi
 
-nohup python3 "$C2_SCRIPT" \
+nohup "$PYTHON" "$C2_SCRIPT" \
     > /tmp/c2_server.log 2>&1 &
 C2_PID=$!
 ok "C2 Server started  (PID ${C2_PID})  →  /tmp/c2_server.log"
@@ -95,7 +116,7 @@ if [[ ! -f "$BOT_SCRIPT" ]]; then
     warn "bot.py not found — skipping"
     BOT_PID=0
 else
-    nohup python3 "$BOT_SCRIPT" \
+    nohup "$PYTHON" "$BOT_SCRIPT" \
         > /tmp/c2_bot.log 2>&1 &
     BOT_PID=$!
     ok "Telegram Bot started  (PID ${BOT_PID})  →  /tmp/c2_bot.log"
@@ -119,15 +140,7 @@ if [[ ! -f "$DASHBOARD_DIR/app.py" ]]; then
     exit 1
 fi
 
-# Install Python dependencies if requirements.txt exists
-if [[ -f "$DASHBOARD_DIR/requirements.txt" ]]; then
-    info "Checking Python dependencies..."
-    pip3 install -r "$DASHBOARD_DIR/requirements.txt" -q \
-        && ok "Python dependencies satisfied" \
-        || warn "pip3 install had warnings (check manually)"
-fi
-
-nohup python3 "$DASHBOARD_DIR/app.py" \
+nohup "$PYTHON" "$DASHBOARD_DIR/app.py" \
     > /tmp/dashboard.log 2>&1 &
 DASHBOARD_PID=$!
 ok "Flask Dashboard started  (PID ${DASHBOARD_PID})  →  /tmp/dashboard.log"

