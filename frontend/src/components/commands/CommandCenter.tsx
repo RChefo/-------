@@ -109,8 +109,13 @@ export function CommandCenter() {
     if (!selectedClient)  { toast.warning('Please select a target client'); return; }
     try {
       setSending(true);
-      await api.sendCommand({ command: command.trim(), client_id: selectedClient });
-      toast.success(`Command queued for ${selectedClient}`, 'Queued ✓');
+      const res = await api.sendCommand({ command: command.trim(), client_id: selectedClient });
+      // [C2-Server] executes immediately and returns result right away
+      if (res && (res as { result?: string }).result !== undefined) {
+        toast.success(`Command executed on ${selectedClient}`, 'Done ✓');
+      } else {
+        toast.success(`Command queued for ${selectedClient}`, 'Queued ✓');
+      }
       setCommand('');
       await refreshHistory();
     } catch (err: unknown) {

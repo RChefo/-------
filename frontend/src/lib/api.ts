@@ -87,7 +87,7 @@ export const api = {
     return request<HealthStatus>('/api/health');
   },
 
-  async sendCommand(payload: CommandPayload): Promise<{ success: boolean; message?: string }> {
+  async sendCommand(payload: CommandPayload): Promise<{ status?: string; command_id?: number; result?: string }> {
     return request('/api/command', {
       method: 'POST',
       body: JSON.stringify(payload),

