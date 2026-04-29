@@ -53,23 +53,9 @@ def _load_token() -> str:
     return os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 
-def _load_allowed_chats() -> list[str]:
-    try:
-        if os.path.exists(TELEGRAM_CONFIG):
-            with open(TELEGRAM_CONFIG, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            return [str(c) for c in cfg.get("chat_ids", [])]
-    except Exception:
-        pass
-    return []
-
-
-# ── Auth check ────────────────────────────────────────────────────────
+# ── Auth check (token = security layer — no extra restriction) ────────
 def _allowed(chat_id: int) -> bool:
-    allowed = _load_allowed_chats()
-    if not allowed:
-        return True   # no restriction if no chat IDs configured
-    return str(chat_id) in allowed
+    return True
 
 
 def _session(chat_id: int) -> dict:
