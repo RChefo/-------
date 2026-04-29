@@ -62,6 +62,7 @@ export interface ActivityDataPoint {
 export interface CommandPayload {
   command: string;
   client_id: string;
+  sudo?: boolean;
 }
 
 export interface TelegramSettings {

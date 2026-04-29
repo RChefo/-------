@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import {
   Terminal, Send, Loader2, ChevronDown,
   Zap, Circle, CheckCircle2, XCircle, Clock,
-  RotateCcw,
+  RotateCcw, ShieldAlert,
 } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -92,6 +92,7 @@ export function CommandCenter() {
   const [selectedClient, setSelectedClient] = useState('');
   const [command, setCommand] = useState('');
   const [sending, setSending] = useState(false);
+  const [sudoMode, setSudoMode] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef    = useRef<HTMLInputElement>(null);
@@ -109,7 +110,11 @@ export function CommandCenter() {
     if (!selectedClient)  { toast.warning('Please select a target client'); return; }
     try {
       setSending(true);
-      const res = await api.sendCommand({ command: command.trim(), client_id: selectedClient });
+      const res = await api.sendCommand({
+        command: command.trim(),
+        client_id: selectedClient,
+        sudo: sudoMode,
+      });
       // [C2-Server] executes immediately and returns result right away
       if (res && (res as { result?: string }).result !== undefined) {
         toast.success(`Command executed on ${selectedClient}`, 'Done ✓');
@@ -215,11 +220,16 @@ export function CommandCenter() {
             <span className="w-3 h-3 rounded-full bg-red-500/70" />
             <span className="w-3 h-3 rounded-full bg-amber-500/70" />
             <span className="w-3 h-3 rounded-full bg-emerald-500/70" />
-            <span className="ml-3 text-xs text-c2-muted font-mono">
+            <span className="ml-3 text-xs text-c2-muted font-mono flex items-center gap-2">
               C2 Terminal —{' '}
               {selectedClient
                 ? <span className="text-violet-300">{selectedClient}</span>
                 : <span className="text-c2-muted/50">no target selected</span>}
+              {sudoMode && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold tracking-wide">
+                  <ShieldAlert size={9} />SUDO
+                </span>
+              )}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -263,7 +273,14 @@ export function CommandCenter() {
 
         {/* Command input */}
         <div className="border-t border-white/[0.06] px-4 py-3 flex items-center gap-3 bg-white/[0.02]">
-          <span className="text-emerald-400 font-mono text-sm flex-shrink-0">$</span>
+          {/* Prompt symbol — red if sudo mode */}
+          <span className={cn(
+            'font-mono text-sm flex-shrink-0 transition-colors',
+            sudoMode ? 'text-red-400' : 'text-emerald-400'
+          )}>
+            {sudoMode ? '#' : '$'}
+          </span>
+
           <input
             ref={inputRef}
             type="text"
@@ -278,6 +295,25 @@ export function CommandCenter() {
               'disabled:cursor-not-allowed disabled:opacity-40'
             )}
           />
+
+          {/* Sudo toggle */}
+          <motion.button
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            onClick={() => setSudoMode(v => !v)}
+            title={sudoMode ? 'sudo mode ON — click to disable' : 'sudo mode OFF — click to enable'}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium flex-shrink-0',
+              'border transition-colors',
+              sudoMode
+                ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
+                : 'bg-white/[0.04] border-white/[0.1] text-c2-muted hover:text-white hover:bg-white/[0.08]'
+            )}
+          >
+            <ShieldAlert size={12} />
+            <span className="hidden sm:inline">sudo</span>
+          </motion.button>
+
+          {/* Send */}
           <motion.button
             whileHover={{ scale: sending || !command.trim() || !selectedClient ? 1 : 1.05 }}
             whileTap={{ scale: sending || !command.trim() || !selectedClient ? 1 : 0.95 }}
@@ -285,9 +321,11 @@ export function CommandCenter() {
             disabled={sending || !command.trim() || !selectedClient}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0',
-              'bg-violet-500/20 border border-violet-500/30 text-violet-300',
-              'hover:bg-violet-500/30 transition-colors',
-              'disabled:opacity-40 disabled:cursor-not-allowed'
+              'border transition-colors',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+              sudoMode
+                ? 'bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30'
+                : 'bg-violet-500/20 border-violet-500/30 text-violet-300 hover:bg-violet-500/30'
             )}
           >
             {sending
