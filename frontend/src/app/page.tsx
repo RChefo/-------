@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Monitor, ScrollText, Zap, Clock } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ActivityChart } from '@/components/dashboard/ActivityChart';
@@ -9,17 +8,6 @@ import { ProcessControl } from '@/components/dashboard/ProcessControl';
 import { useStats, useLogs } from '@/hooks/useApi';
 import { formatUptime } from '@/lib/utils';
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.1,
-    },
-  },
-};
-
 export default function OverviewPage() {
   const { data: stats, isLoading: statsLoading } = useStats();
   const { data: logs, isLoading: logsLoading } = useLogs();
@@ -27,26 +15,17 @@ export default function OverviewPage() {
   return (
     <div className="p-6 space-y-6 min-h-full bg-mesh">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
+      <div>
         <h1 className="text-2xl font-bold">
           <span className="gradient-text-violet">Command &amp; Control</span>
         </h1>
         <p className="text-sm text-c2-muted mt-1">
           Real-time cybersecurity simulation monitoring dashboard
         </p>
-      </motion.div>
+      </div>
 
       {/* Stat Cards — Bento Row 1 */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
-      >
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Total Clients"
           value={stats?.total_clients ?? 0}
@@ -88,34 +67,22 @@ export default function OverviewPage() {
           delay={0.24}
           formatValue={(val) => formatUptime(val)}
         />
-      </motion.div>
+      </div>
 
       {/* Bento Row 2: Chart + Process Control */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
-      >
-        {/* Activity Chart — 2 cols */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 min-h-[280px]">
           <ActivityChart logs={logs} isLoading={logsLoading} />
         </div>
-
-        {/* Process Control — 1 col */}
         <div className="lg:col-span-1">
           <ProcessControl />
         </div>
-      </motion.div>
+      </div>
 
       {/* Recent Activity */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-      >
+      <div>
         <RecentActivity logs={logs} isLoading={logsLoading} />
-      </motion.div>
+      </div>
     </div>
   );
 }

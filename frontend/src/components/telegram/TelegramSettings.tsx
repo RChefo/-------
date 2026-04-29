@@ -93,11 +93,7 @@ export function TelegramSettings() {
       {/* Top Row: Config + Broadcast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left: Bot Configuration */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4 }}
-        >
+        <div>
           <GlassCard className="h-full flex flex-col gap-5">
             {/* Header */}
             <div className="flex items-center gap-3">
@@ -173,14 +169,10 @@ export function TelegramSettings() {
               )}
             </motion.button>
           </GlassCard>
-        </motion.div>
+        </div>
 
         {/* Right: Broadcast Message */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
+        <div>
           <GlassCard className="h-full flex flex-col gap-5">
             {/* Header */}
             <div className="flex items-center gap-3">
@@ -237,15 +229,11 @@ export function TelegramSettings() {
               )}
             </motion.button>
           </GlassCard>
-        </motion.div>
+        </div>
       </div>
 
       {/* Quick Test Row */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-      >
+      <div>
         <GlassCard className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {/* Label */}
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -308,7 +296,7 @@ export function TelegramSettings() {
             </motion.button>
           </div>
         </GlassCard>
-      </motion.div>
+      </div>
     </div>
   );
 }

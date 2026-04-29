@@ -99,12 +99,7 @@ export function CommandCenter() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Left Panel: Command Input */}
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex flex-col gap-4"
-      >
+      <div className="flex flex-col gap-4">
         <GlassCard className="flex flex-col gap-5">
           {/* Header */}
           <div className="flex items-center gap-3">
@@ -253,14 +248,10 @@ export function CommandCenter() {
             ))}
           </div>
         </GlassCard>
-      </motion.div>
+      </div>
 
       {/* Right Panel: Command History */}
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-      >
+      <div>
         <GlassCard padding={false} className="overflow-hidden h-full">
           {/* Header */}
           <div className="flex items-center gap-3 p-6 border-b border-white/[0.07]">
@@ -336,7 +327,7 @@ export function CommandCenter() {
             </table>
           </div>
         </GlassCard>
-      </motion.div>
+      </div>
     </div>
   );
 }

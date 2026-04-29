@@ -1,16 +1,23 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 
 export default function Template({ children }: { children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    setVisible(true);
+  }, []);
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
+    <div
       className="min-h-full"
+      style={{
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 200ms ease-out',
+      }}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
