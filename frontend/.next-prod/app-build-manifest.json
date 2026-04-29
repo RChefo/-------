@@ -1,73 +1,40 @@
 {
   "pages": {
-    "/_not-found/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/app/_not-found/page-27cfa88a347d5db0.js"
+    "/telegram/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/telegram/page.js"
     ],
     "/layout": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/css/199dfd7d5cd26746.css",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/492-e896f3daf6c5f528.js",
-      "static/chunks/103-5e0fbf1ca7d5f7ca.js",
-      "static/chunks/405-3a4622411e0c7812.js",
-      "static/chunks/216-cbc0c9134d3e6e49.js",
-      "static/chunks/app/layout-3d116a01ddfb41b8.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ],
+    "/template": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/template.js"
     ],
     "/commands/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/492-e896f3daf6c5f528.js",
-      "static/chunks/103-5e0fbf1ca7d5f7ca.js",
-      "static/chunks/141-f131e74b85feeb1a.js",
-      "static/chunks/app/commands/page-e74430f4b3dabfd1.js"
-    ],
-    "/clients/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/492-e896f3daf6c5f528.js",
-      "static/chunks/103-5e0fbf1ca7d5f7ca.js",
-      "static/chunks/405-3a4622411e0c7812.js",
-      "static/chunks/app/clients/page-4b92895f17dc3f19.js"
-    ],
-    "/telegram/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/app/telegram/page-bc1d1b9483191e85.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/commands/page.js"
     ],
     "/logs/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/492-e896f3daf6c5f528.js",
-      "static/chunks/app/logs/page-e2f6b1117765168b.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/logs/page.js"
     ],
     "/page": [
-      "static/chunks/webpack-2aa2dab5d3c01de2.js",
-      "static/chunks/fd9d1056-bded804e5279ee8b.js",
-      "static/chunks/23-51086788255e390a.js",
-      "static/chunks/main-app-4f4d97e74ce84c1c.js",
-      "static/chunks/180-aa4d0106f2f0e357.js",
-      "static/chunks/492-e896f3daf6c5f528.js",
-      "static/chunks/109-1e44e6c005837bf1.js",
-      "static/chunks/app/page-04d504ac85bed05b.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
+    ],
+    "/clients/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/clients/page.js"
     ]
   }
 }

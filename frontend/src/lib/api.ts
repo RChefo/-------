@@ -105,11 +105,49 @@ export const api = {
     });
   },
 
+  async sendTelegramPhoto(file: File): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const response = await fetch('/api/telegram/send_photo', {
+      method: 'POST',
+      headers: { 'X-Dashboard-Key': DASHBOARD_KEY },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new ApiError(err.error || `HTTP ${response.status}`, response.status);
+    }
+    return response.json();
+  },
+
+  async sendTelegramFile(file: File): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/telegram/send_file', {
+      method: 'POST',
+      headers: { 'X-Dashboard-Key': DASHBOARD_KEY },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new ApiError(err.error || `HTTP ${response.status}`, response.status);
+    }
+    return response.json();
+  },
+
   async updateTelegramSettings(settings: TelegramSettings): Promise<{ success: boolean }> {
     return request('/api/telegram/settings', {
       method: 'POST',
       body: JSON.stringify(settings),
     });
+  },
+
+  async getTelegramConfig(): Promise<{ has_token: boolean; masked_token: string; chat_ids: string[] }> {
+    return request('/api/telegram/config');
+  },
+
+  async deleteTelegramConfig(): Promise<{ status: string }> {
+    return request('/api/telegram/config', { method: 'DELETE' });
   },
 
   async startProcess(type: 'server' | 'bot'): Promise<{ success: boolean }> {

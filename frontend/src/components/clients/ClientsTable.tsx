@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Terminal, Users, X, Send, Loader2 } from 'lucide-react';
+import { Search, Terminal, Users, X, Send, Loader2, Server, Cpu, Globe } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { StatusDot } from '@/components/ui/StatusDot';
@@ -143,10 +143,10 @@ export function ClientsTable() {
 
   const clients = useMemo(() => {
     if (!clientsMap) return [];
-    return Object.entries(clientsMap).map(([id, data]) => ({
-      id,
-      ...data,
-    }));
+    const list = Object.entries(clientsMap).map(([id, data]) => ({ id, ...data }));
+    // Server client always pinned at top
+    list.sort((a, b) => (b.is_server ? 1 : 0) - (a.is_server ? 1 : 0));
+    return list;
   }, [clientsMap]);
 
   const filtered = useMemo(() => {
@@ -167,7 +167,10 @@ export function ClientsTable() {
             <div>
               <h2 className="text-base font-bold text-white">Connected Clients</h2>
               <p className="text-xs text-c2-muted">
-                {isLoading ? 'Loading...' : `${clients.length} client${clients.length !== 1 ? 's' : ''} registered`}
+                {isLoading ? 'Loading...' : (() => {
+                  const n = clients.filter(c => !c.is_server).length;
+                  return `${n} client${n !== 1 ? 's' : ''} registered`;
+                })()}
               </p>
             </div>
           </div>
@@ -199,8 +202,8 @@ export function ClientsTable() {
             <thead>
               <tr>
                 <th>Client ID</th>
+                <th>Info</th>
                 <th>Last Seen</th>
-                <th>Time Since</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -229,7 +232,8 @@ export function ClientsTable() {
               ) : (
                 <AnimatePresence mode="popLayout">
                   {filtered.map((client, i) => {
-                    const online = isClientOnline(client.timestamp);
+                    const online = client.is_server ? true : isClientOnline(client.timestamp);
+                    const isServer = client.is_server;
                     return (
                       <motion.tr
                         key={client.id}
@@ -237,39 +241,85 @@ export function ClientsTable() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ delay: i * 0.04 }}
-                        className="border-b border-white/[0.04] hover:bg-white/[0.025] transition-colors group"
+                        className={cn(
+                          'border-b border-white/[0.04] transition-colors group',
+                          isServer
+                            ? 'bg-cyan-500/[0.04] hover:bg-cyan-500/[0.07]'
+                            : 'hover:bg-white/[0.025]'
+                        )}
                       >
-                        <td>
-                          <span className="font-mono text-xs text-violet-400 bg-violet-500/10 px-2 py-1 rounded-md">
-                            {client.id}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-xs text-slate-300 font-mono">
-                            {formatDateTime(client.last_seen)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="text-xs text-c2-muted">
-                            {timeSince(client.last_seen)}
-                          </span>
-                        </td>
+                        {/* Client ID */}
                         <td>
                           <div className="flex items-center gap-2">
-                            <StatusDot
-                              status={online ? 'online' : 'offline'}
-                              size="sm"
-                            />
-                            <span
-                              className={cn(
-                                'text-xs font-medium',
-                                online ? 'text-emerald-400' : 'text-red-400'
+                            {isServer && (
+                              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                                <Server size={12} className="text-cyan-400" />
+                              </div>
+                            )}
+                            <div className="flex flex-col gap-0.5">
+                              <span className={cn(
+                                'font-mono text-xs px-2 py-1 rounded-md',
+                                isServer
+                                  ? 'text-cyan-300 bg-cyan-500/10'
+                                  : 'text-violet-400 bg-violet-500/10'
+                              )}>
+                                {client.id}
+                              </span>
+                              {isServer && (
+                                <span className="text-[10px] text-cyan-500/70 px-2 font-medium tracking-wide">
+                                  HOST MACHINE
+                                </span>
                               )}
-                            >
-                              {online ? 'Online' : 'Offline'}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Info */}
+                        <td>
+                          {isServer ? (
+                            <div className="flex flex-col gap-0.5">
+                              {client.hostname && (
+                                <span className="flex items-center gap-1 text-xs text-slate-300">
+                                  <Cpu size={10} className="text-c2-muted" />
+                                  {client.hostname}
+                                </span>
+                              )}
+                              {client.ip && (
+                                <span className="flex items-center gap-1 text-xs text-c2-muted font-mono">
+                                  <Globe size={10} />
+                                  {client.ip}
+                                </span>
+                              )}
+                              {client.os && (
+                                <span className="text-[10px] text-c2-muted/60">{client.os}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-c2-muted/50">—</span>
+                          )}
+                        </td>
+
+                        {/* Last Seen */}
+                        <td>
+                          <span className="text-xs text-slate-300 font-mono">
+                            {isServer ? 'Now' : formatDateTime(client.last_seen)}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <StatusDot status={online ? 'online' : 'offline'} size="sm" />
+                            <span className={cn(
+                              'text-xs font-medium',
+                              online ? 'text-emerald-400' : 'text-red-400'
+                            )}>
+                              {isServer ? 'Running' : online ? 'Online' : 'Offline'}
                             </span>
                           </div>
                         </td>
+
+                        {/* Action */}
                         <td>
                           <motion.button
                             whileHover={{ scale: 1.05 }}
@@ -277,8 +327,10 @@ export function ClientsTable() {
                             onClick={() => setCommandModalClient(client.id)}
                             className={cn(
                               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium',
-                              'bg-violet-500/10 border border-violet-500/20 text-violet-400',
-                              'hover:bg-violet-500/20 transition-colors'
+                              isServer
+                                ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20'
+                                : 'bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20',
+                              'transition-colors'
                             )}
                           >
                             <Terminal size={12} />

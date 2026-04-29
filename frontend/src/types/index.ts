@@ -9,6 +9,10 @@ export interface Stats {
 export interface Client {
   last_seen: string;
   timestamp: number;
+  is_server?: boolean;
+  hostname?: string;
+  ip?: string;
+  os?: string;
 }
 
 export type ClientsMap = Record<string, Client>;

