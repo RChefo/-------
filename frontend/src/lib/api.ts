@@ -105,9 +105,10 @@ export const api = {
     });
   },
 
-  async sendTelegramPhoto(file: File): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
+  async sendTelegramPhoto(file: File, targetChatId?: string): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
     const formData = new FormData();
     formData.append('photo', file);
+    if (targetChatId) formData.append('target_chat_id', targetChatId);
     const response = await fetch('/api/telegram/send_photo', {
       method: 'POST',
       headers: { 'X-Dashboard-Key': DASHBOARD_KEY },
@@ -120,9 +121,10 @@ export const api = {
     return response.json();
   },
 
-  async sendTelegramFile(file: File): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
+  async sendTelegramFile(file: File, targetChatId?: string): Promise<{ results: { chat_id: string; status?: string; error?: string }[] }> {
     const formData = new FormData();
     formData.append('file', file);
+    if (targetChatId) formData.append('target_chat_id', targetChatId);
     const response = await fetch('/api/telegram/send_file', {
       method: 'POST',
       headers: { 'X-Dashboard-Key': DASHBOARD_KEY },
@@ -148,6 +150,25 @@ export const api = {
 
   async deleteTelegramConfig(): Promise<{ status: string }> {
     return request('/api/telegram/config', { method: 'DELETE' });
+  },
+
+  async getServerInfo(): Promise<{ user: string; hostname: string; cwd: string; is_root: boolean }> {
+    return request('/api/server_info');
+  },
+
+  async getServerConfig(): Promise<{ has_sudo_password: boolean; sudo_password_hint: string }> {
+    return request('/api/server_config');
+  },
+
+  async updateServerConfig(config: { sudo_password?: string }): Promise<{ status: string }> {
+    return request('/api/server_config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async deleteServerConfig(): Promise<{ status: string }> {
+    return request('/api/server_config', { method: 'DELETE' });
   },
 
   async startProcess(type: 'server' | 'bot'): Promise<{ success: boolean }> {

@@ -300,11 +300,16 @@ def telegram_send_photo():
     try:
         if 'photo' not in request.files:
             return jsonify({"error": "No photo provided"}), 400
-        f = request.files['photo']
-        headers = {"X-API-Key": C2_API_KEY}
+        f               = request.files['photo']
+        target_chat_id  = request.form.get('target_chat_id', '')
+        headers         = {"X-API-Key": C2_API_KEY}
+        data_fields     = {}
+        if target_chat_id:
+            data_fields['target_chat_id'] = target_chat_id
         r = requests.post(
             f"{C2_SERVER_URL}/send_photo_to_telegram",
             files={"photo": (f.filename, f.read(), f.content_type or "image/jpeg")},
+            data=data_fields,
             headers=headers,
             timeout=30,
         )
@@ -321,13 +326,49 @@ def telegram_send_file():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
-        f = request.files['file']
-        headers = {"X-API-Key": C2_API_KEY}
+        f               = request.files['file']
+        target_chat_id  = request.form.get('target_chat_id', '')
+        headers         = {"X-API-Key": C2_API_KEY}
+        data_fields     = {}
+        if target_chat_id:
+            data_fields['target_chat_id'] = target_chat_id
         r = requests.post(
             f"{C2_SERVER_URL}/send_file_to_telegram",
             files={"file": (f.filename, f.read(), f.content_type or "application/octet-stream")},
+            data=data_fields,
             headers=headers,
             timeout=30,
+        )
+        return jsonify(r.json()), r.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "C2 server offline"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/server_info", methods=["GET"])
+def get_server_info():
+    return _proxy_get("/server_info")
+
+
+@app.route("/api/server_config", methods=["GET"])
+def get_server_config():
+    return _proxy_get("/server_config")
+
+
+@app.route("/api/server_config", methods=["POST"])
+@require_auth
+def update_server_config():
+    return _proxy_post("/server_config")
+
+
+@app.route("/api/server_config", methods=["DELETE"])
+@require_auth
+def delete_server_config():
+    try:
+        r = requests.delete(
+            f"{C2_SERVER_URL}/server_config",
+            headers=C2_AUTH, timeout=5,
         )
         return jsonify(r.json()), r.status_code
     except requests.exceptions.ConnectionError:

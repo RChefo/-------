@@ -82,11 +82,13 @@ export function TelegramSettings() {
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [sendingPhoto, setSendingPhoto] = useState(false);
+  const [targetChatPhoto, setTargetChatPhoto] = useState<string>('all');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   // File
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sendingFile, setSendingFile] = useState(false);
+  const [targetChatFile, setTargetChatFile] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Test
@@ -180,7 +182,8 @@ export function TelegramSettings() {
     if (!selectedPhoto) return;
     try {
       setSendingPhoto(true);
-      const res     = await api.sendTelegramPhoto(selectedPhoto);
+      const target  = targetChatPhoto === 'all' ? undefined : targetChatPhoto;
+      const res     = await api.sendTelegramPhoto(selectedPhoto, target);
       const results = res.results ?? [];
       const failed  = results.filter(r => r.error);
       const ok      = results.filter(r => r.status === 'sent');
@@ -214,7 +217,8 @@ export function TelegramSettings() {
     if (!selectedFile) return;
     try {
       setSendingFile(true);
-      const res     = await api.sendTelegramFile(selectedFile);
+      const target  = targetChatFile === 'all' ? undefined : targetChatFile;
+      const res     = await api.sendTelegramFile(selectedFile, target);
       const results = res.results ?? [];
       const failed  = results.filter(r => r.error);
       const ok      = results.filter(r => r.status === 'sent');
@@ -423,9 +427,29 @@ export function TelegramSettings() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">Send Photo</h3>
-              <p className="text-xs text-c2-muted">Broadcast an image</p>
+              <p className="text-xs text-c2-muted">Send an image to a chat</p>
             </div>
           </div>
+
+          {/* Target chat selector */}
+          <div>
+            <label className="text-xs text-c2-muted mb-1.5 block font-medium uppercase tracking-wider">Target Chat</label>
+            <select
+              value={targetChatPhoto}
+              onChange={e => setTargetChatPhoto(e.target.value)}
+              className={cn(
+                'w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm',
+                'text-c2-text outline-none transition-all duration-200 font-mono',
+                'focus:border-pink-500/50'
+              )}
+            >
+              <option value="all">📢 All Chats</option>
+              {botConfig?.chat_ids?.map(id => (
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
+          </div>
+
           <div
             onClick={() => !selectedPhoto && photoInputRef.current?.click()}
             className={cn(
@@ -475,8 +499,27 @@ export function TelegramSettings() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">Send File</h3>
-              <p className="text-xs text-c2-muted">Broadcast a document</p>
+              <p className="text-xs text-c2-muted">Send a document to a chat</p>
             </div>
+          </div>
+
+          {/* Target chat selector */}
+          <div>
+            <label className="text-xs text-c2-muted mb-1.5 block font-medium uppercase tracking-wider">Target Chat</label>
+            <select
+              value={targetChatFile}
+              onChange={e => setTargetChatFile(e.target.value)}
+              className={cn(
+                'w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm',
+                'text-c2-text outline-none transition-all duration-200 font-mono',
+                'focus:border-emerald-500/50'
+              )}
+            >
+              <option value="all">📢 All Chats</option>
+              {botConfig?.chat_ids?.map(id => (
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
           </div>
           <div
             onClick={() => !selectedFile && fileInputRef.current?.click()}

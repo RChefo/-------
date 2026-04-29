@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown, Loader2, RotateCcw, ShieldAlert, Terminal,
+  KeyRound, Eye, EyeOff, Trash2,
 } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import { useToast } from '@/context/ToastContext';
@@ -37,30 +38,44 @@ function statusLabel(s: string) {
 }
 
 /* ─── Single terminal block ─────────────────────────────────────── */
-function TerminalEntry({ cmd, hostname }: { cmd: Command; hostname: string }) {
+function TerminalEntry({
+  cmd, serverUser, serverHostname,
+}: {
+  cmd: Command;
+  serverUser: string;
+  serverHostname: string;
+}) {
   const ts = cmd.created_at
     ? new Date(cmd.created_at).toLocaleTimeString('en-GB', { hour12: false })
     : '--:--:--';
-  const target = String(cmd.client_id).slice(0, 20);
+
+  const isServer  = cmd.client_id === '[C2-Server]';
+  const entryUser = isServer ? serverUser : cmd.client_id.slice(0, 12);
+  const entryHost = isServer ? serverHostname : String(cmd.client_id).slice(0, 20);
+  const entryRoot = entryUser === 'root';
+  const pathColor = '#f3f99d';
+  const cwdDisplay = cmd.cwd ?? (isServer ? '~' : '~');
   const col    = statusColor(cmd.status);
+  const promptChar = entryRoot ? '#' : '$';
+  const promptColor = entryRoot ? '#ff5c57' : '#5af78e';
 
   return (
     <div className="px-3 py-1 select-text">
-      {/* Kali-style prompt line */}
+      {/* prompt line */}
       <div className="font-mono text-[13px] leading-snug flex flex-wrap items-center gap-1">
         <span style={{ color: '#ff5c57' }}>┌──(</span>
-        <span style={{ color: '#5af78e' }}>{hostname}</span>
+        <span style={{ color: entryRoot ? '#ff5c57' : '#5af78e' }}>{entryUser}</span>
         <span style={{ color: '#ff5c57' }}>㉿</span>
-        <span style={{ color: '#57c7ff' }}>{target}</span>
+        <span style={{ color: '#57c7ff' }}>{entryHost}</span>
         <span style={{ color: '#ff5c57' }}>)-[</span>
-        <span style={{ color: '#f3f99d' }}>~/c2-dashboard</span>
+        <span style={{ color: pathColor }}>{cwdDisplay}</span>
         <span style={{ color: '#ff5c57' }}>]</span>
         <span className="ml-auto text-[11px]" style={{ color: '#636363' }}>{ts}</span>
       </div>
       {/* Command line */}
       <div className="font-mono text-[13px] leading-snug flex items-start gap-1.5">
         <span style={{ color: '#ff5c57' }}>└─</span>
-        <span style={{ color: '#5af78e' }}>$</span>
+        <span style={{ color: promptColor }}>{promptChar}</span>
         <span className="text-white flex-1 break-all">{cmd.command}</span>
         <span className="text-[11px] font-bold ml-1" style={{ color: col }}>
           {statusLabel(cmd.status)}
@@ -97,16 +112,66 @@ export function CommandCenter() {
   const [sending, setSending]               = useState(false);
   const [sudoMode, setSudoMode]             = useState(false);
 
+  // Real server shell state
+  const [serverUser, setServerUser]         = useState('user');
+  const [serverHostname, setServerHostname] = useState('c2');
+  const [serverCwd, setServerCwd]           = useState('~');
+  const [isRoot, setIsRoot]                 = useState(false);
+
+  // Sudo password config panel
+  const [showSudoPanel, setShowSudoPanel]   = useState(false);
+  const [sudoPassword, setSudoPassword]     = useState('');
+  const [showSudoPass, setShowSudoPass]     = useState(false);
+  const [savingSudo, setSavingSudo]         = useState(false);
+  const [hasSudoPassword, setHasSudoPassword] = useState(false);
+
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef    = useRef<HTMLInputElement>(null);
 
   const clientIds  = clientsMap ? Object.keys(clientsMap) : [];
-  const hostname   = 'kali@c2';
 
   useEffect(() => {
     const el = terminalRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [commandHistory]);
+
+  // Load server info + sudo password status on mount
+  useEffect(() => {
+    api.getServerInfo().then(info => {
+      setServerUser(info.user);
+      setServerHostname(info.hostname);
+      setServerCwd(info.cwd);
+      setIsRoot(info.is_root);
+    }).catch(() => {});
+    api.getServerConfig().then(cfg => setHasSudoPassword(cfg.has_sudo_password)).catch(() => {});
+  }, []);
+
+  const handleSaveSudoPassword = async () => {
+    if (!sudoPassword.trim()) { toast.warning('Enter a sudo password'); return; }
+    try {
+      setSavingSudo(true);
+      await api.updateServerConfig({ sudo_password: sudoPassword.trim() });
+      setHasSudoPassword(true);
+      setSudoPassword('');
+      toast.success('Sudo password saved — sudo mode ready', 'Saved ✓');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to save — ${msg}`, 'Error');
+    } finally {
+      setSavingSudo(false);
+    }
+  };
+
+  const handleClearSudoPassword = async () => {
+    try {
+      await api.deleteServerConfig();
+      setHasSudoPassword(false);
+      toast.success('Sudo password cleared', 'Cleared');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed — ${msg}`, 'Error');
+    }
+  };
 
   const handleSend = async () => {
     if (!command.trim()) { toast.warning('Please enter a command'); return; }
@@ -117,11 +182,16 @@ export function CommandCenter() {
         command: command.trim(),
         client_id: selectedClient,
         sudo: sudoMode,
-      });
-      if (res && (res as { result?: string }).result !== undefined) {
-        toast.success(`Command executed on ${selectedClient}`, 'Done ✓');
+      }) as { status?: string; command_id?: number; result?: string; cwd?: string; user?: string };
+
+      // Update shell state if [C2-Server] responded
+      if (res.cwd)  setServerCwd(res.cwd);
+      if (res.user) { setServerUser(res.user); setIsRoot(res.user === 'root'); }
+
+      if (res.result !== undefined) {
+        toast.success(`Executed on ${selectedClient}`, 'Done ✓');
       } else {
-        toast.success(`Command queued for ${selectedClient}`, 'Queued ✓');
+        toast.success(`Queued for ${selectedClient}`, 'Queued ✓');
       }
       setCommand('');
       await refreshHistory();
@@ -164,7 +234,11 @@ export function CommandCenter() {
           </div>
           {/* Center: title */}
           <span className="text-xs font-mono" style={{ color: '#c0c0c0' }}>
-            {hostname}: ~/c2-dashboard
+            <span style={{ color: isRoot ? '#ff5c57' : '#5af78e' }}>{serverUser}</span>
+            <span style={{ color: '#636363' }}>@</span>
+            <span style={{ color: '#57c7ff' }}>{serverHostname}</span>
+            <span style={{ color: '#636363' }}>: </span>
+            <span style={{ color: '#f3f99d' }}>{serverCwd}</span>
             {sudoMode && (
               <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold"
                 style={{ background: 'rgba(255,92,87,0.25)', color: '#ff5c57' }}>
@@ -274,7 +348,12 @@ export function CommandCenter() {
           ) : (
             <div className="space-y-3 pb-2">
               {[...commandHistory].reverse().map(cmd => (
-                <TerminalEntry key={cmd.id} cmd={cmd} hostname={hostname} />
+                <TerminalEntry
+                  key={cmd.id}
+                  cmd={cmd}
+                  serverUser={serverUser}
+                  serverHostname={serverHostname}
+                />
               ))}
             </div>
           )}
@@ -285,73 +364,78 @@ export function CommandCenter() {
           className="px-3 py-2"
           style={{ background: termBg, borderTop: '1px solid rgba(255,255,255,0.05)' }}
         >
-          {/* Prompt first line */}
-          <div className="font-mono text-[13px] leading-snug mb-0.5 flex flex-wrap items-center gap-1">
-            <span style={{ color: '#ff5c57' }}>┌──(</span>
-            <span style={{ color: '#5af78e' }}>{hostname}</span>
-            <span style={{ color: '#ff5c57' }}>㉿</span>
-            <span style={{ color: '#57c7ff' }}>
-              {selectedClient || 'no-target'}
-            </span>
-            <span style={{ color: '#ff5c57' }}>)-[</span>
-            <span style={{ color: '#f3f99d' }}>~/c2-dashboard</span>
-            <span style={{ color: '#ff5c57' }}>]</span>
-          </div>
+          {/* Prompt first line — use actual server info when [C2-Server] is selected */}
+          {(() => {
+            const isC2 = selectedClient === '[C2-Server]';
+            const displayUser = isC2 ? serverUser : (selectedClient ? selectedClient.slice(0, 12) : 'user');
+            const displayHost = isC2 ? serverHostname : (selectedClient || 'no-target');
+            const displayCwd  = isC2 ? serverCwd : '~';
+            const effectiveRoot = isC2 ? isRoot : false;
+            const promptChar  = (sudoMode || effectiveRoot) ? '#' : '$';
+            const promptColor = (sudoMode || effectiveRoot) ? '#ff5c57' : '#5af78e';
+            const userColor   = effectiveRoot ? '#ff5c57' : '#5af78e';
+            return (
+              <>
+                <div className="font-mono text-[13px] leading-snug mb-0.5 flex flex-wrap items-center gap-1">
+                  <span style={{ color: '#ff5c57' }}>┌──(</span>
+                  <span style={{ color: userColor }}>{displayUser}</span>
+                  <span style={{ color: '#ff5c57' }}>㉿</span>
+                  <span style={{ color: '#57c7ff' }}>{displayHost}</span>
+                  <span style={{ color: '#ff5c57' }}>)-[</span>
+                  <span style={{ color: '#f3f99d' }}>{displayCwd}</span>
+                  <span style={{ color: '#ff5c57' }}>]</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[13px] flex-shrink-0" style={{ color: '#ff5c57' }}>└─</span>
+                  <span className="font-mono text-[13px] flex-shrink-0" style={{ color: promptColor }}>
+                    {promptChar}
+                  </span>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={command}
+                    onChange={e => setCommand(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={selectedClient ? '' : 'select a target first…'}
+                    disabled={!selectedClient}
+                  className="flex-1 bg-transparent outline-none font-mono text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ color: '#ffffff', caretColor: '#5af78e' }}
+                />
 
-          {/* Input line */}
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[13px] flex-shrink-0" style={{ color: '#ff5c57' }}>
-              └─
-            </span>
-            <span
-              className="font-mono text-[13px] flex-shrink-0"
-              style={{ color: sudoMode ? '#ff5c57' : '#5af78e' }}
-            >
-              {sudoMode ? '#' : '$'}
-            </span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={command}
-              onChange={e => setCommand(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={selectedClient ? '' : 'select a target first…'}
-              disabled={!selectedClient}
-              className="flex-1 bg-transparent outline-none font-mono text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ color: '#ffffff', caretColor: '#5af78e' }}
-            />
+                {/* sudo toggle */}
+                <button
+                  onClick={() => setSudoMode(v => !v)}
+                  title={sudoMode ? 'SUDO ON — click to disable' : 'SUDO OFF — click to enable'}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all"
+                  style={{
+                    background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    color: sudoMode ? '#ff5c57' : '#636363',
+                  }}
+                >
+                  <ShieldAlert size={11} />
+                  sudo
+                </button>
 
-            {/* sudo toggle */}
-            <button
-              onClick={() => setSudoMode(v => !v)}
-              title={sudoMode ? 'SUDO ON — click to disable' : 'SUDO OFF — click to enable'}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all"
-              style={{
-                background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                color: sudoMode ? '#ff5c57' : '#636363',
-              }}
-            >
-              <ShieldAlert size={11} />
-              sudo
-            </button>
-
-            {/* send button */}
-            <button
-              onClick={handleSend}
-              disabled={sending || !command.trim() || !selectedClient}
-              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{
-                background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(90,247,142,0.15)',
-                border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.4)' : 'rgba(90,247,142,0.3)'}`,
-                color: sudoMode ? '#ff5c57' : '#5af78e',
-              }}
-            >
-              {sending
-                ? <><Loader2 size={11} className="animate-spin" />running</>
-                : <>↵ run</>}
-            </button>
-          </div>
+                {/* send button */}
+                <button
+                  onClick={handleSend}
+                  disabled={sending || !command.trim() || !selectedClient}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(90,247,142,0.15)',
+                    border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.4)' : 'rgba(90,247,142,0.3)'}`,
+                    color: sudoMode ? '#ff5c57' : '#5af78e',
+                  }}
+                >
+                  {sending
+                    ? <><Loader2 size={11} className="animate-spin" />running</>
+                    : <>↵ run</>}
+                </button>
+              </div>
+            </>
+          );
+          })()}
         </div>
       </div>
 
@@ -377,6 +461,89 @@ export function CommandCenter() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* ── Sudo Password Settings ── */}
+      <div
+        className="rounded-xl border border-white/[0.06] overflow-hidden"
+        style={{ background: titleBarBg }}
+      >
+        {/* Header / toggle */}
+        <button
+          onClick={() => setShowSudoPanel(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 transition-colors hover:bg-white/[0.03]"
+        >
+          <div className="flex items-center gap-2">
+            <KeyRound size={14} style={{ color: '#ff5c57' }} />
+            <span className="text-xs font-mono font-semibold" style={{ color: '#c0c0c0' }}>
+              Sudo Password
+            </span>
+            {hasSudoPassword ? (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono"
+                style={{ background: 'rgba(90,247,142,0.15)', color: '#5af78e', border: '1px solid rgba(90,247,142,0.3)' }}>
+                SET
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono"
+                style={{ background: 'rgba(255,92,87,0.15)', color: '#ff5c57', border: '1px solid rgba(255,92,87,0.3)' }}>
+                NOT SET
+              </span>
+            )}
+          </div>
+          <ChevronDown
+            size={14}
+            style={{ color: '#636363', transform: showSudoPanel ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+          />
+        </button>
+
+        {showSudoPanel && (
+          <div className="px-4 pb-4 flex flex-col gap-3"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+            <p className="text-xs pt-3" style={{ color: '#636363' }}>
+              Required for sudo mode on [C2-Server]. Stored securely on the server.
+            </p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showSudoPass ? 'text' : 'password'}
+                  value={sudoPassword}
+                  onChange={e => setSudoPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSaveSudoPassword()}
+                  placeholder={hasSudoPassword ? 'Enter new password to update…' : 'Enter sudo password…'}
+                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm font-mono outline-none pr-8"
+                  style={{ color: '#c0c0c0' }}
+                />
+                <button
+                  onClick={() => setShowSudoPass(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: '#636363' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#c0c0c0')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#636363')}
+                >
+                  {showSudoPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <button
+                onClick={handleSaveSudoPassword}
+                disabled={savingSudo || !sudoPassword.trim()}
+                className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all disabled:opacity-40"
+                style={{ background: 'rgba(90,247,142,0.15)', border: '1px solid rgba(90,247,142,0.3)', color: '#5af78e' }}
+              >
+                {savingSudo ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
+              </button>
+              {hasSudoPassword && (
+                <button
+                  onClick={handleClearSudoPassword}
+                  className="px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all"
+                  style={{ background: 'rgba(255,92,87,0.1)', border: '1px solid rgba(255,92,87,0.25)', color: '#ff5c57' }}
+                  title="Clear saved sudo password"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
