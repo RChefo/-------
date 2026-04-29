@@ -12,7 +12,6 @@ import {
   Send,
   ChevronLeft,
   ChevronRight,
-  Skull,
   Server,
   Bot,
 } from 'lucide-react';
@@ -92,9 +91,6 @@ export function Sidebar() {
             collapsed ? 'justify-center' : 'gap-3'
           )}
         >
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-lg">
-            <Skull size={18} className="text-white" />
-          </div>
           <AnimatePresence initial={false}>
             {!collapsed && (
               <motion.div
