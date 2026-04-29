@@ -411,20 +411,38 @@ def receive_command():
             raw_path = os.path.normpath(raw_path)
 
             if not os.path.exists(raw_path):
-                output = f"get: {raw_path}: No such file or directory"
-                status = "error"
+                output  = f"get: {raw_path}: No such file or directory"
+                status  = "error"
                 dl_path = None
             elif os.path.isdir(raw_path):
-                output = f"get: {raw_path}: Is a directory — specify a file"
-                status = "error"
-                dl_path = None
+                # Zip the directory on-the-fly and save to uploads/
+                import zipfile, io as _io
+                zip_name   = os.path.basename(raw_path.rstrip("/")) + ".zip"
+                zip_dir    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+                os.makedirs(zip_dir, exist_ok=True)
+                zip_path   = os.path.join(zip_dir, f"{int(time.time())}_{zip_name}")
+                try:
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for root, _, files in os.walk(raw_path):
+                            for fname in files:
+                                fpath   = os.path.join(root, fname)
+                                arcname = os.path.relpath(fpath, os.path.dirname(raw_path))
+                                zf.write(fpath, arcname)
+                    size_kb = os.path.getsize(zip_path) / 1024
+                    output  = f"Directory zipped → {zip_name} ({size_kb:.1f} KB)"
+                    status  = "done"
+                    dl_path = zip_path
+                except Exception as ze:
+                    output  = f"get: failed to zip directory: {ze}"
+                    status  = "error"
+                    dl_path = None
             elif os.path.getsize(raw_path) > 100 * 1024 * 1024:
-                output = f"get: file too large ({os.path.getsize(raw_path) // (1024*1024)} MB). Max 100 MB."
-                status = "error"
+                output  = f"get: file too large ({os.path.getsize(raw_path) // (1024*1024)} MB). Max 100 MB."
+                status  = "error"
                 dl_path = None
             else:
                 size_kb = os.path.getsize(raw_path) / 1024
-                output  = f"Ready to download: {raw_path} ({size_kb:.1f} KB)"
+                output  = f"Ready to download: {os.path.basename(raw_path)} ({size_kb:.1f} KB)"
                 status  = "done"
                 dl_path = raw_path
 
@@ -944,10 +962,31 @@ def download_file():
     path = os.path.normpath(path)
 
     if not os.path.exists(path):
-        return jsonify({"error": f"No such file: {path}"}), 404
+        return jsonify({"error": f"No such file or directory: {path}"}), 404
 
+    # If it's a directory, zip it on-the-fly and stream the zip
     if os.path.isdir(path):
-        return jsonify({"error": f"{path} is a directory, not a file"}), 400
+        import zipfile, io as _io
+        zip_buf  = _io.BytesIO()
+        zip_name = os.path.basename(path.rstrip("/")) + ".zip"
+        try:
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(path):
+                    for fname in files:
+                        fpath   = os.path.join(root, fname)
+                        arcname = os.path.relpath(fpath, os.path.dirname(path))
+                        zf.write(fpath, arcname)
+            zip_buf.seek(0)
+            logger.info(f"📥 Directory zip download: {path}")
+            save_log_to_db(time.time(), "download", f"[dashboard download dir] {path} → {zip_name}", "dashboard")
+            from flask import send_file as flask_send_file
+            return flask_send_file(
+                zip_buf, as_attachment=True,
+                download_name=zip_name,
+                mimetype="application/zip",
+            )
+        except Exception as ze:
+            return jsonify({"error": f"Failed to zip directory: {ze}"}), 500
 
     # Safety: cap at 100 MB
     size = os.path.getsize(path)
@@ -958,6 +997,7 @@ def download_file():
     logger.info(f"📥 File download: {path} ({size} bytes)")
     save_log_to_db(time.time(), "download", f"[dashboard download] {path} ({size} bytes)", "dashboard")
 
+    from flask import send_file as flask_send_file
     return flask_send_file(path, as_attachment=True, download_name=filename)
 
 # ======================== 13d. اختبار ========================
