@@ -57,7 +57,7 @@ export function useCommandHistory() {
   const { data, isLoading, error, mutate } = useSWR<Command[]>(
     `${API_BASE}/commands/history`,
     fetcher,
-    { ...BASE_OPTS, refreshInterval: REFRESH.SLOW }
+    { ...BASE_OPTS, refreshInterval: REFRESH.NORMAL }
   );
   return { data: data ?? [], isLoading, error, mutate };
 }

@@ -125,6 +125,15 @@ def init_db():
     ''')
 
     conn.commit()
+
+    # ── Migrations: add missing columns to existing tables ──
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(commands)")}
+    for col, definition in [("result", "TEXT"), ("executed_at", "REAL")]:
+        if col not in existing:
+            cursor.execute(f"ALTER TABLE commands ADD COLUMN {col} {definition}")
+            logger.info(f"🔧 Migration: added commands.{col}")
+
+    conn.commit()
     conn.close()
     logger.info("✅ Database initialized")
 
@@ -616,20 +625,52 @@ def commands_history():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, command, client_id, status, created_at FROM commands ORDER BY id DESC LIMIT 100')
+        cursor.execute(
+            'SELECT id, command, client_id, status, result, created_at, executed_at '
+            'FROM commands ORDER BY id DESC LIMIT 100'
+        )
         rows = cursor.fetchall()
         conn.close()
         history = []
         for row in rows:
             history.append({
-                "id": row[0],
-                "command": row[1],
-                "client_id": row[2],
-                "status": row[3],
-                "created_at": time.ctime(row[4]) if row[4] else None
+                "id":          row[0],
+                "command":     row[1],
+                "client_id":   row[2],
+                "status":      row[3],
+                "result":      row[4],
+                "created_at":  time.ctime(row[5]) if row[5] else None,
+                "executed_at": time.ctime(row[6]) if row[6] else None,
             })
         return jsonify(history)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/command_result", methods=["POST"])
+@rate_limit
+def command_result():
+    """Agent calls this after executing a command to submit the result."""
+    data = request.json
+    command_id = data.get("command_id")
+    result     = data.get("result", "")
+    status     = data.get("status", "done")   # done | error
+
+    if not command_id:
+        return jsonify({"error": "command_id required"}), 400
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            'UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
+            (status, result, time.time(), command_id)
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Command {command_id} result received — status: {status}")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Failed to save command result: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ======================== التشغيل ========================

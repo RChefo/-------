@@ -217,6 +217,11 @@ def health():
     return _proxy_get("/health")
 
 
+@app.route("/api/command_result", methods=["POST"])
+def command_result():
+    return _proxy_post("/command_result")
+
+
 @app.route("/api/commands/history")
 def commands_history():
     return _proxy_get("/commands/history")

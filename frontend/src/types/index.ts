@@ -30,7 +30,9 @@ export interface Command {
   command: string;
   client_id: string;
   status: 'pending' | 'done' | 'error' | 'running';
+  result?: string | null;
   created_at: string;
+  executed_at?: string | null;
 }
 
 export interface ProcessStatus {
