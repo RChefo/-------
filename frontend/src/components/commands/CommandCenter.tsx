@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown, Loader2, RotateCcw, ShieldAlert, Terminal,
-  KeyRound, Eye, EyeOff, Trash2,
+  KeyRound, Eye, EyeOff, Trash2, Download, FolderOpen,
 } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import { useToast } from '@/context/ToastContext';
@@ -118,6 +118,10 @@ export function CommandCenter() {
   const [serverCwd, setServerCwd]           = useState('~');
   const [isRoot, setIsRoot]                 = useState(false);
 
+  // Get file panel
+  const [getFilePath, setGetFilePath]       = useState('');
+  const [downloading, setDownloading]       = useState(false);
+
   // Sudo password config panel
   const [showSudoPanel, setShowSudoPanel]   = useState(false);
   const [sudoPassword, setSudoPassword]     = useState('');
@@ -173,9 +177,40 @@ export function CommandCenter() {
     }
   };
 
+  const handleDownload = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) { toast.warning('Enter a file path'); return; }
+    try {
+      setDownloading(true);
+      const blob = await api.downloadFile(trimmed);
+      const filename = trimmed.split('/').pop() || 'file';
+      const url = URL.createObjectURL(blob);
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded: ${filename}`, 'Done ✓');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Download failed — ${msg}`, 'Error');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!command.trim()) { toast.warning('Please enter a command'); return; }
     if (!selectedClient)  { toast.warning('Please select a target client'); return; }
+
+    // Intercept `get <path>` when targeting [C2-Server] → trigger download
+    const getMatch = command.trim().match(/^get\s+(.+)$/i);
+    if (getMatch && selectedClient === '[C2-Server]') {
+      setCommand('');
+      await handleDownload(getMatch[1]);
+      return;
+    }
+
     try {
       setSending(true);
       const res = await api.sendCommand({
@@ -460,6 +495,57 @@ export function CommandCenter() {
               {cmd}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* ── Get File ── */}
+      <div
+        className="rounded-xl border border-white/[0.06] overflow-hidden"
+        style={{ background: titleBarBg }}
+      >
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(87,199,255,0.15)' }}>
+            <Download size={13} style={{ color: '#57c7ff' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-mono font-semibold" style={{ color: '#c0c0c0' }}>
+              Get File
+              <span className="ml-2 text-[10px] font-normal" style={{ color: '#636363' }}>
+                type <code style={{ color: '#57c7ff' }}>get &lt;path&gt;</code> in the terminal OR use the box below
+              </span>
+            </p>
+          </div>
+        </div>
+        <div className="px-4 pb-4 flex gap-2"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="relative flex-1">
+            <FolderOpen size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: '#636363' }} />
+            <input
+              type="text"
+              value={getFilePath}
+              onChange={e => setGetFilePath(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleDownload(getFilePath)}
+              placeholder="/home/user/secret.txt  or  ~/file.log"
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-3 py-2 text-sm font-mono outline-none transition-all duration-200"
+              style={{ color: '#c0c0c0' }}
+            />
+          </div>
+          <button
+            onClick={() => handleDownload(getFilePath)}
+            disabled={downloading || !getFilePath.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all disabled:opacity-40 flex-shrink-0"
+            style={{
+              background: 'rgba(87,199,255,0.15)',
+              border: '1px solid rgba(87,199,255,0.3)',
+              color: '#57c7ff',
+            }}
+          >
+            {downloading
+              ? <><Loader2 size={12} className="animate-spin" />Downloading…</>
+              : <><Download size={12} />Download</>}
+          </button>
         </div>
       </div>
 

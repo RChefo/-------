@@ -156,6 +156,18 @@ export const api = {
     return request('/api/server_info');
   },
 
+  async downloadFile(path: string): Promise<Blob> {
+    const response = await fetch(
+      `/api/download_file?path=${encodeURIComponent(path)}`,
+      { headers: { 'X-Dashboard-Key': DASHBOARD_KEY } },
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new ApiError(err.error || `HTTP ${response.status}`, response.status);
+    }
+    return response.blob();
+  },
+
   async getServerConfig(): Promise<{ has_sudo_password: boolean; sudo_password_hint: string }> {
     return request('/api/server_config');
   },
