@@ -1,14 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import {
-  Terminal, Send, Loader2, ChevronDown,
-  Zap, Circle, CheckCircle2, XCircle, Clock,
-  RotateCcw, ShieldAlert,
+  ChevronDown, Loader2, RotateCcw, ShieldAlert, Terminal,
 } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { useToast } from '@/context/ToastContext';
 import { useClients, useCommandHistory } from '@/hooks/useApi';
 import { api } from '@/lib/api';
@@ -17,64 +13,71 @@ import type { Command } from '@/types';
 
 const QUICK_COMMANDS = [
   'whoami', 'id', 'hostname', 'uname -a',
-  'ip a', 'ifconfig', 'netstat -tulnp', 'ps aux',
-  'ls -la', 'cat /etc/passwd', 'env', 'pwd',
+  'ip a', 'netstat -tulnp', 'ps aux',
+  'ls -la', 'cat /etc/passwd', 'env', 'pwd', 'cat /etc/os-release',
 ];
 
-/* ─── Status icon ───────────────────────────────────────────────── */
-function StatusIcon({ status }: { status: string }) {
-  switch (status?.toLowerCase()) {
-    case 'done':
-      return <CheckCircle2 size={12} className="text-emerald-400 flex-shrink-0" />;
-    case 'error':
-      return <XCircle size={12} className="text-red-400 flex-shrink-0" />;
-    case 'running':
-      return <Circle size={12} className="text-blue-400 flex-shrink-0 animate-pulse" />;
-    default:
-      return <Clock size={12} className="text-amber-400 flex-shrink-0" />;
+/* ─── Status colour helper ──────────────────────────────────────── */
+function statusColor(s: string) {
+  switch (s?.toLowerCase()) {
+    case 'done':    return '#5af78e';  // bright green
+    case 'error':   return '#ff5c57';  // bright red
+    case 'running': return '#57c7ff';  // bright blue
+    default:        return '#f3f99d';  // yellow (pending)
   }
 }
 
-/* ─── Single terminal entry ─────────────────────────────────────── */
-function TerminalEntry({ cmd }: { cmd: Command }) {
+function statusLabel(s: string) {
+  switch (s?.toLowerCase()) {
+    case 'done':    return '✓';
+    case 'error':   return '✗';
+    case 'running': return '●';
+    default:        return '…';
+  }
+}
+
+/* ─── Single terminal block ─────────────────────────────────────── */
+function TerminalEntry({ cmd, hostname }: { cmd: Command; hostname: string }) {
   const ts = cmd.created_at
     ? new Date(cmd.created_at).toLocaleTimeString('en-GB', { hour12: false })
     : '--:--:--';
-
-  const statusColor: Record<string, string> = {
-    done:    'text-emerald-400',
-    error:   'text-red-400',
-    running: 'text-blue-400',
-    pending: 'text-amber-400',
-  };
-  const col = statusColor[cmd.status?.toLowerCase()] ?? 'text-c2-muted';
+  const target = String(cmd.client_id).slice(0, 20);
+  const col    = statusColor(cmd.status);
 
   return (
-    <div className="group py-3 px-4 border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-      {/* Command line */}
-      <div className="flex items-center gap-2 font-mono text-sm">
-        <span className="text-c2-muted/50 text-xs w-16 flex-shrink-0">{ts}</span>
-        <span className="text-violet-400 flex-shrink-0">
-          [{String(cmd.client_id).slice(0, 14)}]
-        </span>
-        <span className="text-emerald-400 flex-shrink-0">$</span>
-        <span className="text-white">{cmd.command}</span>
+    <div className="px-3 py-1 select-text">
+      {/* Kali-style prompt line */}
+      <div className="font-mono text-[13px] leading-snug flex flex-wrap items-center gap-1">
+        <span style={{ color: '#ff5c57' }}>┌──(</span>
+        <span style={{ color: '#5af78e' }}>{hostname}</span>
+        <span style={{ color: '#ff5c57' }}>㉿</span>
+        <span style={{ color: '#57c7ff' }}>{target}</span>
+        <span style={{ color: '#ff5c57' }}>)-[</span>
+        <span style={{ color: '#f3f99d' }}>~/c2-dashboard</span>
+        <span style={{ color: '#ff5c57' }}>]</span>
+        <span className="ml-auto text-[11px]" style={{ color: '#636363' }}>{ts}</span>
       </div>
-
-      {/* Result / status */}
-      <div className="flex items-start gap-2 mt-1.5 font-mono">
-        <span className="w-16 flex-shrink-0" />
-        <StatusIcon status={cmd.status} />
+      {/* Command line */}
+      <div className="font-mono text-[13px] leading-snug flex items-start gap-1.5">
+        <span style={{ color: '#ff5c57' }}>└─</span>
+        <span style={{ color: '#5af78e' }}>$</span>
+        <span className="text-white flex-1 break-all">{cmd.command}</span>
+        <span className="text-[11px] font-bold ml-1" style={{ color: col }}>
+          {statusLabel(cmd.status)}
+        </span>
+      </div>
+      {/* Output */}
+      <div className="font-mono text-[12px] leading-relaxed pl-5 mt-0.5">
         {cmd.result ? (
-          <pre className={cn('text-xs leading-relaxed whitespace-pre-wrap break-all', col)}>
+          <pre className="whitespace-pre-wrap break-all" style={{ color: col }}>
             {cmd.result}
           </pre>
         ) : (
-          <span className={cn('text-xs italic', col)}>
+          <span style={{ color: col, fontStyle: 'italic' }}>
             {cmd.status === 'pending'  && 'waiting for agent…'}
             {cmd.status === 'running'  && 'executing…'}
-            {cmd.status === 'done'     && 'done (no output)'}
-            {cmd.status === 'error'    && 'error (no details)'}
+            {cmd.status === 'done'     && '(no output)'}
+            {cmd.status === 'error'    && '(no details)'}
           </span>
         )}
       </div>
@@ -84,22 +87,22 @@ function TerminalEntry({ cmd }: { cmd: Command }) {
 
 /* ─── Main Component ────────────────────────────────────────────── */
 export function CommandCenter() {
-  const toast = useToast();
+  const toast   = useToast();
   const { data: clientsMap, isLoading: clientsLoading } = useClients();
   const { data: commandHistory, isLoading: historyLoading, mutate: refreshHistory } =
     useCommandHistory();
 
   const [selectedClient, setSelectedClient] = useState('');
-  const [command, setCommand] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sudoMode, setSudoMode] = useState(false);
+  const [command, setCommand]               = useState('');
+  const [sending, setSending]               = useState(false);
+  const [sudoMode, setSudoMode]             = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef    = useRef<HTMLInputElement>(null);
 
-  const clientIds = clientsMap ? Object.keys(clientsMap) : [];
+  const clientIds  = clientsMap ? Object.keys(clientsMap) : [];
+  const hostname   = 'kali@c2';
 
-  // Auto-scroll terminal to bottom on new entries
   useEffect(() => {
     const el = terminalRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -115,7 +118,6 @@ export function CommandCenter() {
         client_id: selectedClient,
         sudo: sudoMode,
       });
-      // [C2-Server] executes immediately and returns result right away
       if (res && (res as { result?: string }).result !== undefined) {
         toast.success(`Command executed on ${selectedClient}`, 'Done ✓');
       } else {
@@ -136,202 +138,244 @@ export function CommandCenter() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  /* ── Terminal window colours ── */
+  const termBg      = '#0d0e13';
+  const titleBarBg  = '#1a1b26';
+  const menuBarBg   = '#161722';
+
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── Top controls ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Client selector */}
-        <GlassCard className="flex flex-col gap-3">
-          <label className="text-xs text-c2-muted font-medium uppercase tracking-wider">
-            Target Client
-          </label>
-          <Select.Root value={selectedClient} onValueChange={setSelectedClient}>
-            <Select.Trigger className={cn(
-              'w-full flex items-center justify-between',
-              'bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5',
-              'text-sm text-c2-text outline-none transition-all duration-200',
-              'data-[state=open]:border-violet-500/50',
-              'hover:bg-white/[0.06] hover:border-white/[0.12]'
-            )}>
-              <Select.Value placeholder={
-                clientsLoading ? 'Loading…' : clientIds.length === 0 ? 'No clients' : 'Select target…'
-              } />
-              <Select.Icon><ChevronDown size={14} className="text-c2-muted" /></Select.Icon>
-            </Select.Trigger>
-            <Select.Portal>
-              <Select.Content className={cn(
-                'bg-c2-surface border border-white/[0.1] rounded-xl shadow-2xl z-50 overflow-hidden',
-                'w-[var(--radix-select-trigger-width)]'
-              )} position="popper" sideOffset={4}>
-                <Select.Viewport className="p-1">
-                  {clientIds.map(id => (
-                    <Select.Item key={id} value={id} className={cn(
-                      'flex items-center px-3 py-2 text-sm rounded-lg cursor-pointer font-mono',
-                      'text-c2-text outline-none transition-colors',
-                      'data-[highlighted]:bg-violet-500/20 data-[highlighted]:text-violet-300'
-                    )}>
-                      <Select.ItemText>{id}</Select.ItemText>
-                    </Select.Item>
-                  ))}
-                  {clientIds.length === 0 && !clientsLoading && (
-                    <div className="px-3 py-3 text-xs text-c2-muted text-center">No clients connected</div>
-                  )}
-                </Select.Viewport>
-              </Select.Content>
-            </Select.Portal>
-          </Select.Root>
-        </GlassCard>
-
-        {/* Quick commands */}
-        <GlassCard className="lg:col-span-2 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Zap size={13} className="text-amber-400" />
-            <span className="text-xs text-c2-muted font-medium uppercase tracking-wider">Quick Commands</span>
+      {/* ── Terminal window ── */}
+      <div
+        className="rounded-xl overflow-hidden shadow-2xl border border-white/[0.07]"
+        style={{ background: termBg, fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}
+      >
+        {/* ── Window title bar ── */}
+        <div
+          className="flex items-center justify-between px-3 py-2"
+          style={{ background: titleBarBg, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          {/* Left: traffic lights */}
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full" style={{ background: '#ff5c57' }} />
+            <span className="w-3 h-3 rounded-full" style={{ background: '#ffbd2e' }} />
+            <span className="w-3 h-3 rounded-full" style={{ background: '#28ca41' }} />
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK_COMMANDS.map(cmd => (
-              <motion.button
-                key={cmd}
-                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                onClick={() => { setCommand(cmd); inputRef.current?.focus(); }}
-                className={cn(
-                  'px-2.5 py-1 rounded-lg text-xs font-mono font-medium',
-                  'bg-violet-500/5 border border-violet-500/20 text-violet-300',
-                  'hover:bg-violet-500/15 hover:border-violet-500/40 transition-all',
-                  command === cmd && 'bg-violet-500/20 border-violet-500/50'
-                )}
-              >
-                {cmd}
-              </motion.button>
+          {/* Center: title */}
+          <span className="text-xs font-mono" style={{ color: '#c0c0c0' }}>
+            {hostname}: ~/c2-dashboard
+            {sudoMode && (
+              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                style={{ background: 'rgba(255,92,87,0.25)', color: '#ff5c57' }}>
+                SUDO
+              </span>
+            )}
+          </span>
+          {/* Right: refresh */}
+          <button
+            onClick={() => refreshHistory()}
+            className="transition-colors"
+            style={{ color: '#636363' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#c0c0c0')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#636363')}
+            title="Refresh"
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
+
+        {/* ── Menu bar ── */}
+        <div
+          className="flex items-center justify-between px-3 py-1"
+          style={{ background: menuBarBg, borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+        >
+          {/* Menu items */}
+          <div className="flex items-center gap-4">
+            {['Session', 'Actions', 'Edit', 'View', 'Help'].map(item => (
+              <span key={item} className="text-xs cursor-default select-none"
+                style={{ color: '#c0c0c0' }}>
+                {item}
+              </span>
             ))}
           </div>
-        </GlassCard>
-      </div>
-
-      {/* ── Terminal panel ── */}
-      <div className="rounded-2xl border border-white/[0.08] overflow-hidden bg-[#0a0b10]">
-
-        {/* Terminal title bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.03] border-b border-white/[0.06]">
+          {/* Client selector in menu bar */}
           <div className="flex items-center gap-2">
-            {/* Traffic lights */}
-            <span className="w-3 h-3 rounded-full bg-red-500/70" />
-            <span className="w-3 h-3 rounded-full bg-amber-500/70" />
-            <span className="w-3 h-3 rounded-full bg-emerald-500/70" />
-            <span className="ml-3 text-xs text-c2-muted font-mono flex items-center gap-2">
-              C2 Terminal —{' '}
-              {selectedClient
-                ? <span className="text-violet-300">{selectedClient}</span>
-                : <span className="text-c2-muted/50">no target selected</span>}
-              {sudoMode && (
-                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold tracking-wide">
-                  <ShieldAlert size={9} />SUDO
-                </span>
-              )}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-c2-muted font-mono">
-              {commandHistory.length} cmd{commandHistory.length !== 1 ? 's' : ''}
-            </span>
-            <motion.button
-              whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-              onClick={() => refreshHistory()}
-              className="text-c2-muted hover:text-white transition-colors"
-              title="Refresh"
-            >
-              <RotateCcw size={13} />
-            </motion.button>
+            <span className="text-xs" style={{ color: '#636363' }}>target:</span>
+            <Select.Root value={selectedClient} onValueChange={setSelectedClient}>
+              <Select.Trigger
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono outline-none transition-colors"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: selectedClient ? '#5af78e' : '#636363',
+                  minWidth: '120px',
+                }}
+              >
+                <Select.Value placeholder={
+                  clientsLoading ? 'loading…' : 'select target…'
+                } />
+                <Select.Icon className="ml-auto">
+                  <ChevronDown size={10} style={{ color: '#636363' }} />
+                </Select.Icon>
+              </Select.Trigger>
+              <Select.Portal>
+                <Select.Content
+                  className="rounded-lg shadow-2xl overflow-hidden z-50"
+                  style={{
+                    background: '#1a1b26',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    minWidth: '180px',
+                  }}
+                  position="popper"
+                  sideOffset={4}
+                >
+                  <Select.Viewport className="p-1">
+                    {clientIds.map(id => (
+                      <Select.Item
+                        key={id} value={id}
+                        className="flex items-center px-3 py-1.5 text-xs rounded cursor-pointer outline-none font-mono"
+                        style={{ color: '#c0c0c0' }}
+                      >
+                        <Select.ItemText>{id}</Select.ItemText>
+                      </Select.Item>
+                    ))}
+                    {clientIds.length === 0 && !clientsLoading && (
+                      <div className="px-3 py-2 text-xs text-center" style={{ color: '#636363' }}>
+                        No clients connected
+                      </div>
+                    )}
+                  </Select.Viewport>
+                </Select.Content>
+              </Select.Portal>
+            </Select.Root>
           </div>
         </div>
 
-        {/* Terminal output */}
+        {/* ── Terminal output area ── */}
         <div
           ref={terminalRef}
-          className="h-[420px] overflow-y-auto overflow-x-hidden"
+          className="overflow-y-auto overflow-x-hidden py-2"
+          style={{ height: '420px', background: termBg }}
           onClick={() => inputRef.current?.focus()}
         >
           {historyLoading ? (
-            <div className="flex items-center justify-center h-full gap-2 text-c2-muted">
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-sm font-mono">Loading history…</span>
+            <div className="flex items-center justify-center h-full gap-2"
+              style={{ color: '#636363', fontFamily: 'monospace' }}>
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-sm">Loading history…</span>
             </div>
           ) : commandHistory.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-c2-muted">
-              <Terminal size={32} className="opacity-20" />
-              <p className="text-sm font-mono opacity-50">No commands yet. Send your first command.</p>
+            <div className="flex flex-col items-center justify-center h-full gap-3"
+              style={{ color: '#636363' }}>
+              <Terminal size={28} />
+              <p className="text-xs font-mono">No commands yet.</p>
             </div>
           ) : (
-            /* Show oldest first in terminal */
-            [...commandHistory].reverse().map(cmd => (
-              <TerminalEntry key={cmd.id} cmd={cmd} />
-            ))
+            <div className="space-y-3 pb-2">
+              {[...commandHistory].reverse().map(cmd => (
+                <TerminalEntry key={cmd.id} cmd={cmd} hostname={hostname} />
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Command input */}
-        <div className="border-t border-white/[0.06] px-4 py-3 flex items-center gap-3 bg-white/[0.02]">
-          {/* Prompt symbol — red if sudo mode */}
-          <span className={cn(
-            'font-mono text-sm flex-shrink-0 transition-colors',
-            sudoMode ? 'text-red-400' : 'text-emerald-400'
-          )}>
-            {sudoMode ? '#' : '$'}
-          </span>
+        {/* ── Input area ── */}
+        <div
+          className="px-3 py-2"
+          style={{ background: termBg, borderTop: '1px solid rgba(255,255,255,0.05)' }}
+        >
+          {/* Prompt first line */}
+          <div className="font-mono text-[13px] leading-snug mb-0.5 flex flex-wrap items-center gap-1">
+            <span style={{ color: '#ff5c57' }}>┌──(</span>
+            <span style={{ color: '#5af78e' }}>{hostname}</span>
+            <span style={{ color: '#ff5c57' }}>㉿</span>
+            <span style={{ color: '#57c7ff' }}>
+              {selectedClient || 'no-target'}
+            </span>
+            <span style={{ color: '#ff5c57' }}>)-[</span>
+            <span style={{ color: '#f3f99d' }}>~/c2-dashboard</span>
+            <span style={{ color: '#ff5c57' }}>]</span>
+          </div>
 
-          <input
-            ref={inputRef}
-            type="text"
-            value={command}
-            onChange={e => setCommand(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={selectedClient ? `command for ${selectedClient}…` : 'select a target first…'}
-            disabled={!selectedClient}
-            className={cn(
-              'flex-1 bg-transparent outline-none font-mono text-sm',
-              'text-white placeholder:text-c2-muted/40',
-              'disabled:cursor-not-allowed disabled:opacity-40'
-            )}
-          />
+          {/* Input line */}
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[13px] flex-shrink-0" style={{ color: '#ff5c57' }}>
+              └─
+            </span>
+            <span
+              className="font-mono text-[13px] flex-shrink-0"
+              style={{ color: sudoMode ? '#ff5c57' : '#5af78e' }}
+            >
+              {sudoMode ? '#' : '$'}
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={command}
+              onChange={e => setCommand(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={selectedClient ? '' : 'select a target first…'}
+              disabled={!selectedClient}
+              className="flex-1 bg-transparent outline-none font-mono text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ color: '#ffffff', caretColor: '#5af78e' }}
+            />
 
-          {/* Sudo toggle */}
-          <motion.button
-            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-            onClick={() => setSudoMode(v => !v)}
-            title={sudoMode ? 'sudo mode ON — click to disable' : 'sudo mode OFF — click to enable'}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium flex-shrink-0',
-              'border transition-colors',
-              sudoMode
-                ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
-                : 'bg-white/[0.04] border-white/[0.1] text-c2-muted hover:text-white hover:bg-white/[0.08]'
-            )}
-          >
-            <ShieldAlert size={12} />
-            <span className="hidden sm:inline">sudo</span>
-          </motion.button>
+            {/* sudo toggle */}
+            <button
+              onClick={() => setSudoMode(v => !v)}
+              title={sudoMode ? 'SUDO ON — click to disable' : 'SUDO OFF — click to enable'}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all"
+              style={{
+                background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: sudoMode ? '#ff5c57' : '#636363',
+              }}
+            >
+              <ShieldAlert size={11} />
+              sudo
+            </button>
 
-          {/* Send */}
-          <motion.button
-            whileHover={{ scale: sending || !command.trim() || !selectedClient ? 1 : 1.05 }}
-            whileTap={{ scale: sending || !command.trim() || !selectedClient ? 1 : 0.95 }}
-            onClick={handleSend}
-            disabled={sending || !command.trim() || !selectedClient}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0',
-              'border transition-colors',
-              'disabled:opacity-40 disabled:cursor-not-allowed',
-              sudoMode
-                ? 'bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30'
-                : 'bg-violet-500/20 border-violet-500/30 text-violet-300 hover:bg-violet-500/30'
-            )}
-          >
-            {sending
-              ? <><Loader2 size={12} className="animate-spin" />Sending</>
-              : <><Send size={12} />Send</>}
-          </motion.button>
+            {/* send button */}
+            <button
+              onClick={handleSend}
+              disabled={sending || !command.trim() || !selectedClient}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono font-bold flex-shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: sudoMode ? 'rgba(255,92,87,0.2)' : 'rgba(90,247,142,0.15)',
+                border: `1px solid ${sudoMode ? 'rgba(255,92,87,0.4)' : 'rgba(90,247,142,0.3)'}`,
+                color: sudoMode ? '#ff5c57' : '#5af78e',
+              }}
+            >
+              {sending
+                ? <><Loader2 size={11} className="animate-spin" />running</>
+                : <>↵ run</>}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick commands ── */}
+      <div
+        className="rounded-xl px-4 py-3 border border-white/[0.06]"
+        style={{ background: menuBarBg }}
+      >
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs font-mono mr-1" style={{ color: '#636363' }}>quick:</span>
+          {QUICK_COMMANDS.map(cmd => (
+            <button
+              key={cmd}
+              onClick={() => { setCommand(cmd); inputRef.current?.focus(); }}
+              className="px-2 py-0.5 rounded text-xs font-mono transition-all"
+              style={{
+                background: command === cmd ? 'rgba(90,247,142,0.15)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${command === cmd ? 'rgba(90,247,142,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                color: command === cmd ? '#5af78e' : '#9a9aaa',
+              }}
+            >
+              {cmd}
+            </button>
+          ))}
         </div>
       </div>
     </div>
