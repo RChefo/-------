@@ -95,7 +95,7 @@ export function Sidebar() {
           <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-lg">
             <Skull size={18} className="text-white" />
           </div>
-          <AnimatePresence>
+          <AnimatePresence initial={false}>
             {!collapsed && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
@@ -154,7 +154,7 @@ export function Sidebar() {
                   />
 
                   {/* Label */}
-                  <AnimatePresence>
+                  <AnimatePresence initial={false}>
                     {!collapsed && (
                       <motion.span
                         initial={{ opacity: 0, width: 0 }}

@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
-import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 
@@ -9,28 +7,7 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-const pageVariants = {
-  initial: { opacity: 0, y: 12 },
-  animate: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.35,
-      ease: [0.25, 0.46, 0.45, 0.94],
-    },
-  },
-  exit: {
-    opacity: 0,
-    y: -8,
-    transition: {
-      duration: 0.2,
-    },
-  },
-};
-
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const pathname = usePathname();
-
   return (
     <div className="flex h-screen bg-c2-bg overflow-hidden">
       {/* Sidebar */}
@@ -41,19 +18,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Topbar />
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          {/* initial={false} prevents SSR from rendering opacity:0, which causes blank pages */}
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={pathname}
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="min-h-full"
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          {children}
         </main>
       </div>
     </div>
