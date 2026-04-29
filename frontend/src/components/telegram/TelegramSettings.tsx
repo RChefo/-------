@@ -142,12 +142,22 @@ export function TelegramSettings() {
     }
     try {
       setSending(true);
-      await api.sendTelegramMessage({ message: broadcastMessage.trim() });
-      toast.success('Message broadcast to all chats', 'Sent ✓');
+      const res = await api.sendTelegramMessage({ message: broadcastMessage.trim() });
+      const results = (res as { results?: { chat_id: string; status?: string; error?: string }[] }).results ?? [];
+      const failed  = results.filter(r => r.error);
+      const ok      = results.filter(r => r.status === 'sent');
+      if (ok.length > 0 && failed.length === 0) {
+        toast.success(`Message sent to ${ok.length} chat${ok.length !== 1 ? 's' : ''}`, 'Sent ✓');
+      } else if (ok.length > 0) {
+        toast.warning(`Sent to ${ok.length}, failed for ${failed.length} — ${failed[0]?.error}`, 'Partial');
+      } else {
+        const errMsg = failed[0]?.error ?? 'Unknown error';
+        toast.error(`Send failed — ${errMsg}`, 'Failed');
+      }
       setBroadcastMessage('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Broadcast failed — ${msg}`, 'Send Failed');
+      toast.error(`Broadcast failed — ${msg}`, 'Failed');
     } finally {
       setSending(false);
     }
@@ -208,15 +218,23 @@ export function TelegramSettings() {
 
   /* handlers ── test ── */
   const handleQuickTest = async () => {
-    const msg = testMessage.trim() || 'Test message from C2 Dashboard';
+    const msg = testMessage.trim() || '🟢 Test message from C2 Dashboard';
     try {
       setTestSending(true);
-      await api.sendTelegramMessage({ message: msg });
-      toast.success('Test message sent successfully', 'Sent ✓');
+      const res = await api.sendTelegramMessage({ message: msg });
+      const results = (res as { results?: { chat_id: string; status?: string; error?: string }[] }).results ?? [];
+      const failed  = results.filter(r => r.error);
+      const ok      = results.filter(r => r.status === 'sent');
+      if (ok.length > 0) {
+        toast.success(`Test delivered to ${ok.length} chat${ok.length !== 1 ? 's' : ''}`, 'Bot is working ✓');
+      } else {
+        const errMsg = failed[0]?.error ?? 'Unknown error';
+        toast.error(`Test failed — ${errMsg}`, 'Check bot config');
+      }
       setTestMessage('');
     } catch (err: unknown) {
       const msg2 = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Test failed — ${msg2}`, 'Send Failed');
+      toast.error(`Test failed — ${msg2}`, 'Check bot config');
     } finally {
       setTestSending(false);
     }

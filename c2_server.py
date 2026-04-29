@@ -521,19 +521,38 @@ def get_clients():
 @rate_limit
 @require_auth
 def send_to_telegram():
-    data = request.json
-    message = data.get("message")
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data    = request.json
+    message = data.get("message", "").strip()
 
+    if not TOKEN or not TOKEN.strip():
+        return jsonify({"error": "No bot token configured. Add it from the Telegram settings page."}), 400
+
+    if not ALL_CHATS:
+        return jsonify({"error": "No chat IDs configured. Add them from the Telegram settings page."}), 400
+
+    if not message:
+        return jsonify({"error": "Message is empty."}), 400
+
+    url     = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     results = []
+    any_ok  = False
+
     for chat_id in ALL_CHATS:
         try:
-            requests.post(url, data={"chat_id": chat_id, "text": message})
-            results.append({"chat_id": chat_id, "status": "sent"})
+            r    = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10)
+            body = r.json()
+            if r.ok and body.get("ok"):
+                results.append({"chat_id": chat_id, "status": "sent"})
+                any_ok = True
+            else:
+                desc = body.get("description", f"HTTP {r.status_code}")
+                results.append({"chat_id": chat_id, "error": desc})
+                logger.warning(f"Telegram send failed for {chat_id}: {desc}")
         except Exception as e:
             results.append({"chat_id": chat_id, "error": str(e)})
 
-    return jsonify({"results": results})
+    status_code = 200 if any_ok else 502
+    return jsonify({"results": results}), status_code
 
 # ======================== 9b. إرسال صورة لتليجرام ========================
 @app.route("/send_photo_to_telegram", methods=["POST"])
