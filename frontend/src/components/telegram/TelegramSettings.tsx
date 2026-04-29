@@ -180,8 +180,17 @@ export function TelegramSettings() {
     if (!selectedPhoto) return;
     try {
       setSendingPhoto(true);
-      await api.sendTelegramPhoto(selectedPhoto);
-      toast.success(`Photo "${selectedPhoto.name}" sent to all chats`, 'Sent ✓');
+      const res     = await api.sendTelegramPhoto(selectedPhoto);
+      const results = res.results ?? [];
+      const failed  = results.filter(r => r.error);
+      const ok      = results.filter(r => r.status === 'sent');
+      if (ok.length > 0 && failed.length === 0) {
+        toast.success(`Photo sent to ${ok.length} chat${ok.length !== 1 ? 's' : ''} & saved on server`, 'Sent ✓');
+      } else if (ok.length > 0) {
+        toast.warning(`Sent to ${ok.length}, failed for ${failed.length} — ${failed[0]?.error}`, 'Partial');
+      } else {
+        toast.error(`Failed — ${failed[0]?.error ?? 'Unknown error'}`, 'Send Failed');
+      }
       handleClearPhoto();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -205,8 +214,17 @@ export function TelegramSettings() {
     if (!selectedFile) return;
     try {
       setSendingFile(true);
-      await api.sendTelegramFile(selectedFile);
-      toast.success(`File "${selectedFile.name}" sent to all chats`, 'Sent ✓');
+      const res     = await api.sendTelegramFile(selectedFile);
+      const results = res.results ?? [];
+      const failed  = results.filter(r => r.error);
+      const ok      = results.filter(r => r.status === 'sent');
+      if (ok.length > 0 && failed.length === 0) {
+        toast.success(`File sent to ${ok.length} chat${ok.length !== 1 ? 's' : ''} & saved on server`, 'Sent ✓');
+      } else if (ok.length > 0) {
+        toast.warning(`Sent to ${ok.length}, failed for ${failed.length} — ${failed[0]?.error}`, 'Partial');
+      } else {
+        toast.error(`Failed — ${failed[0]?.error ?? 'Unknown error'}`, 'Send Failed');
+      }
       handleClearFile();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';

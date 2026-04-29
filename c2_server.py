@@ -562,19 +562,43 @@ def send_photo_to_telegram():
     if 'photo' not in request.files:
         return jsonify({"error": "No photo provided"}), 400
 
-    photo = request.files['photo']
-    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    if not TOKEN or not TOKEN.strip():
+        return jsonify({"error": "No bot token configured."}), 400
 
+    photo     = request.files['photo']
+    filename  = photo.filename or "photo.jpg"
+    url       = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+    # ── Save file to server ──────────────────────────────────────────
+    uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    save_path = os.path.join(uploads_dir, f"{int(time.time())}_{filename}")
+    photo.seek(0)
+    photo.save(save_path)
+    logger.info(f"📁 Photo saved to {save_path}")
+
+    # ── Log to DB ────────────────────────────────────────────────────
+    save_log_to_db(time.time(), "photo", f"[dashboard upload] {filename} → saved to {save_path}", "dashboard")
+
+    # ── Send to Telegram chats ───────────────────────────────────────
     results = []
+    any_ok  = False
     for chat_id in ALL_CHATS:
         try:
-            photo.seek(0)
-            requests.post(url, data={"chat_id": chat_id}, files={"photo": photo.read()})
-            results.append({"chat_id": chat_id, "status": "sent"})
+            with open(save_path, "rb") as f:
+                r    = requests.post(url, data={"chat_id": chat_id}, files={"photo": f}, timeout=30)
+                body = r.json()
+            if r.ok and body.get("ok"):
+                results.append({"chat_id": chat_id, "status": "sent"})
+                any_ok = True
+            else:
+                desc = body.get("description", f"HTTP {r.status_code}")
+                results.append({"chat_id": chat_id, "error": desc})
         except Exception as e:
             results.append({"chat_id": chat_id, "error": str(e)})
 
-    return jsonify({"results": results})
+    status_code = 200 if any_ok else 502
+    return jsonify({"results": results, "saved_to": save_path}), status_code
 
 # ======================== 9c. إرسال ملف لتليجرام ========================
 @app.route("/send_file_to_telegram", methods=["POST"])
@@ -584,23 +608,49 @@ def send_file_to_telegram():
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
-    file = request.files['file']
-    url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+    if not TOKEN or not TOKEN.strip():
+        return jsonify({"error": "No bot token configured."}), 400
 
+    file      = request.files['file']
+    filename  = file.filename or "file.bin"
+    url       = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+
+    # ── Save file to server ──────────────────────────────────────────
+    uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    save_path = os.path.join(uploads_dir, f"{int(time.time())}_{filename}")
+    file.seek(0)
+    file.save(save_path)
+    logger.info(f"📁 File saved to {save_path}")
+
+    # ── Log to DB ────────────────────────────────────────────────────
+    size_kb = os.path.getsize(save_path) / 1024
+    save_log_to_db(time.time(), "file", f"[dashboard upload] {filename} ({size_kb:.1f} KB) → saved to {save_path}", "dashboard")
+
+    # ── Send to Telegram chats ───────────────────────────────────────
     results = []
+    any_ok  = False
     for chat_id in ALL_CHATS:
         try:
-            file.seek(0)
-            requests.post(
-                url,
-                data={"chat_id": chat_id},
-                files={"document": (file.filename, file.read(), file.content_type or "application/octet-stream")}
-            )
-            results.append({"chat_id": chat_id, "status": "sent"})
+            with open(save_path, "rb") as f:
+                r    = requests.post(
+                    url,
+                    data={"chat_id": chat_id},
+                    files={"document": (filename, f, "application/octet-stream")},
+                    timeout=30,
+                )
+                body = r.json()
+            if r.ok and body.get("ok"):
+                results.append({"chat_id": chat_id, "status": "sent"})
+                any_ok = True
+            else:
+                desc = body.get("description", f"HTTP {r.status_code}")
+                results.append({"chat_id": chat_id, "error": desc})
         except Exception as e:
             results.append({"chat_id": chat_id, "error": str(e)})
 
-    return jsonify({"results": results})
+    status_code = 200 if any_ok else 502
+    return jsonify({"results": results, "saved_to": save_path}), status_code
 
 # ======================== 10. مسح السجلات ========================
 @app.route("/clear", methods=["DELETE"])
