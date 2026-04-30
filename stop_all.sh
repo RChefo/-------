@@ -36,6 +36,7 @@ _stop() {
 # ── Kill each service ────────────────────────────────────────────────────
 _stop "c2_server.py"      "C2 Server       "
 _stop "bot.py"            "Telegram Bot    "
+_stop "malware.py"        "Malware agent   "
 _stop "dashboard/app.py"  "Flask Dashboard "
 _stop "next"              "Next.js Frontend"
 

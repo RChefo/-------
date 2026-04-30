@@ -307,6 +307,9 @@ telegram_clients: set = set()
 tg_sessions: dict = {}
 _tg_last_update_id = 0
 
+# بدون تحديث last_seen (heartbeat / أوامر) يُعتبر الكلاينت منقطعاً ويُزال من الداش
+CLIENT_OFFLINE_AFTER_SEC = int(os.environ.get("CLIENT_OFFLINE_AFTER_SEC", "120"))
+
 # ── دوال مساعدة للتيليجرام ──────────────────────────────────────────────────
 
 def _tg_send_to_channel(message: str):
@@ -1033,9 +1036,41 @@ def _get_server_info():
     os_info = f"{platform.system()} {platform.release()}".strip()
     return hostname, ip, os_info
 
+
+def _prune_offline_clients(now=None):
+    """إزالة الكلاينت الذين لم يُحدَّث last_seen منذ أكثر من CLIENT_OFFLINE_AFTER_SEC."""
+    now = now if now is not None else time.time()
+    stale = []
+    for cid, info in list(clients.items()):
+        ls = info.get("last_seen")
+        if ls is None:
+            continue
+        try:
+            if now - float(ls) <= CLIENT_OFFLINE_AFTER_SEC:
+                continue
+        except (TypeError, ValueError):
+            continue
+        stale.append(cid)
+    for cid in stale:
+        clients.pop(cid, None)
+        sessions.pop(cid, None)
+        telegram_clients.discard(cid)
+        tg_sessions.pop(cid, None)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("DELETE FROM clients WHERE id=?", (cid,))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning("Could not delete stale client from DB (%s): %s", cid, e)
+    if stale:
+        logger.info("🧹 Removed offline clients: %s", ", ".join(stale))
+
+
 @app.route("/clients", methods=["GET"])
 @rate_limit
 def get_clients():
+    _prune_offline_clients()
     readable = {}
 
     # Permanent server entry — always online, always first
@@ -1232,6 +1267,7 @@ def clear_logs():
 @app.route("/stats", methods=["GET"])
 @rate_limit
 def get_stats():
+    _prune_offline_clients()
     uptime = time.time() - app.start_time
     return jsonify({
         "total_clients": len(clients),

