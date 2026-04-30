@@ -8,3 +8,6 @@ __pycache__/
 *.pyc
 malware-OLD.py
 c2-OLD.py
+.next
+.next-prod
+node_modules
