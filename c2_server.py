@@ -638,12 +638,13 @@ def process_tg_message():
 
 
 @app.route("/malware_pull", methods=["GET"])
-@rate_limit
 def malware_pull():
     """
     كل عميل يسحب رسائله الخاصة فقط (نفس نص الجروب في التيليجرام).
     Header: X-Malware-Pull-Secret — يجب أن يطابق MALWARE_PULL_SECRET على السيرفر.
     Query: client_id
+    ملاحظة: لا يُستخدم rate_limit هنا — عدة عملاء خلف نفس الـ NAT يشاركون IP السيرفر
+    وكانوا يصلون إلى 429 ولا يستلمون PUBLIC_KEY فلا يُرسل الهاندشيك.
     """
     if request.headers.get("X-Malware-Pull-Secret", "") != MALWARE_PULL_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
