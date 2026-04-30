@@ -37,24 +37,26 @@ function statusLabel(s: string) {
   }
 }
 
-/** يستعلم عن سجل الأوامر حتى يُحدَّث الصف (نتيجة التيليجرام لا تأتي في أول refresh). */
+/** Poll command row until done — checks immediately, then every `intervalMs` (single GET per tick). */
 async function pollUntilCommandSettles(
   commandId: number,
-  refreshHistory: () => Promise<unknown>,
-  maxAttempts = 45,
-  intervalMs = 2000,
+  mutateHistory: (data?: Command[], opts?: { revalidate?: boolean }) => Promise<Command[] | undefined>,
+  maxAttempts = 50,
+  intervalMs = 800,
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, intervalMs));
-    await refreshHistory();
+    if (i > 0) {
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
     try {
       const hist = await api.getCommandHistory();
+      await mutateHistory(hist, { revalidate: false });
       const row = hist.find(h => Number(h.id) === Number(commandId));
       if (row && row.status !== 'pending' && row.status !== 'running') {
         return;
       }
     } catch {
-      /* استمر */
+      /* continue */
     }
   }
 }

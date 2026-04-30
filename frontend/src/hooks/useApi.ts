@@ -7,9 +7,11 @@ import type { Stats, ClientsMap, Log, Command, ProcessStatus } from '@/types';
 // Tiered refresh intervals — chosen to stay well under the backend rate limit
 // even when multiple browser tabs are open.
 const REFRESH = {
-  FAST:   10_000,  // 10s — process status: users need near-realtime feedback
-  NORMAL: 15_000,  // 15s — stats, logs
-  SLOW:   30_000,  // 30s — clients, command history (rarely change on their own)
+  FAST:   10_000,
+  NORMAL: 15_000,
+  SLOW:   30_000,
+  /** Command history — tighter than logs so completed TG commands feel snappy */
+  COMMANDS: 2_500,
 } as const;
 
 // Base SWR options applied to every hook.
@@ -57,8 +59,7 @@ export function useCommandHistory() {
   const { data, isLoading, error, mutate } = useSWR<Command[]>(
     `${API_BASE}/commands/history`,
     fetcher,
-    /* أوامر التيليجرام تصل متأخرًا قليلًا — تحديث أسرع من السجلات العادية */
-    { ...BASE_OPTS, refreshInterval: 5_000 }
+    { ...BASE_OPTS, refreshInterval: REFRESH.COMMANDS }
   );
   return { data: data ?? [], isLoading, error, mutate };
 }
