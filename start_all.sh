@@ -34,6 +34,7 @@ PID_FILE="/tmp/c2_project_pids.env"
 # ── Config (all overridable via env vars) ─────────────────────────────────
 export DASHBOARD_KEY="${DASHBOARD_KEY:-dashboard_secret_2026}"
 export C2_SERVER_URL="${C2_SERVER_URL:-http://localhost:5000}"
+export MALWARE_PULL_SECRET="${MALWARE_PULL_SECRET:-c2_malware_pull_default_change_me}"
 export BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 export PYTHON_BIN="$PYTHON"          # used by dashboard/app.py for sub-process spawning
 FORCE_BUILD="${FORCE_BUILD:-false}"
@@ -168,7 +169,10 @@ if [[ "${START_MALWARE}" != "true" ]] && [[ "${START_MALWARE}" != "1" ]] && [[ "
 elif [[ ! -f "$MALWARE_SCRIPT" ]]; then
     warn "malware.py not found — skipping"
 else
-    nohup env MALWARE_CLIENT_ID='[C2-Server]' "$PYTHON" "$MALWARE_SCRIPT" > /tmp/c2_malware.log 2>&1 &
+    nohup env MALWARE_CLIENT_ID='[C2-Server]' \
+      C2_SERVER_PULL_URL="${C2_SERVER_URL}" \
+      MALWARE_PULL_SECRET="${MALWARE_PULL_SECRET}" \
+      "$PYTHON" "$MALWARE_SCRIPT" > /tmp/c2_malware.log 2>&1 &
     MALWARE_PID=$!
     ok "Malware agent started as [C2-Server]  (PID ${MALWARE_PID})  →  /tmp/c2_malware.log"
 fi
