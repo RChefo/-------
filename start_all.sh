@@ -168,9 +168,9 @@ if [[ "${START_MALWARE}" != "true" ]] && [[ "${START_MALWARE}" != "1" ]] && [[ "
 elif [[ ! -f "$MALWARE_SCRIPT" ]]; then
     warn "malware.py not found — skipping"
 else
-    nohup "$PYTHON" "$MALWARE_SCRIPT" > /tmp/c2_malware.log 2>&1 &
+    nohup env MALWARE_CLIENT_ID='[C2-Server]' "$PYTHON" "$MALWARE_SCRIPT" > /tmp/c2_malware.log 2>&1 &
     MALWARE_PID=$!
-    ok "Malware agent started  (PID ${MALWARE_PID})  →  /tmp/c2_malware.log"
+    ok "Malware agent started as [C2-Server]  (PID ${MALWARE_PID})  →  /tmp/c2_malware.log"
 fi
 
 sleep 1
