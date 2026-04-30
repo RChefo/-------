@@ -144,7 +144,13 @@ export const api = {
     });
   },
 
-  async getTelegramConfig(): Promise<{ has_token: boolean; masked_token: string; chat_ids: string[] }> {
+  async getTelegramConfig(): Promise<{
+    has_token: boolean;
+    masked_token: string;
+    chat_ids: string[];
+    c2_group_id?: string;
+    c2_channel_id?: string;
+  }> {
     return request('/api/telegram/config');
   },
 

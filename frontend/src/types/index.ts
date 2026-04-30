@@ -69,6 +69,8 @@ export interface CommandPayload {
 export interface TelegramSettings {
   token?: string;
   chat_ids?: string[];
+  c2_group_id?: string;
+  c2_channel_id?: string;
 }
 
 export interface TelegramMessage {

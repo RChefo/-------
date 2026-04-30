@@ -64,11 +64,13 @@ export function useCommandHistory() {
 }
 
 export function useTelegramConfig() {
-  const { data, isLoading, error, mutate } = useSWR<{ has_token: boolean; masked_token: string; chat_ids: string[] }>(
-    `${API_BASE}/telegram/config`,
-    fetcher,
-    { ...BASE_OPTS, refreshInterval: 0 }
-  );
+  const { data, isLoading, error, mutate } = useSWR<{
+    has_token: boolean;
+    masked_token: string;
+    chat_ids: string[];
+    c2_group_id?: string;
+    c2_channel_id?: string;
+  }>(`${API_BASE}/telegram/config`, fetcher, { ...BASE_OPTS, refreshInterval: 0 });
   return { data, isLoading, error, mutate };
 }
 
