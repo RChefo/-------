@@ -70,6 +70,8 @@ export function useTelegramConfig() {
     chat_ids: string[];
     c2_group_id?: string;
     c2_channel_id?: string;
+    c2_server_url?: string;
+    has_malware_pull_secret?: boolean;
   }>(`${API_BASE}/telegram/config`, fetcher, { ...BASE_OPTS, refreshInterval: 0 });
   return { data, isLoading, error, mutate };
 }

