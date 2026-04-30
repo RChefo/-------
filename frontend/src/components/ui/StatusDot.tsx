@@ -11,22 +11,22 @@ interface StatusDotProps {
 
 const statusConfig = {
   online: {
-    dot: 'bg-emerald-400',
-    ring: 'bg-emerald-400',
+    dot: 'bg-emerald-500',
+    ring: 'bg-emerald-500',
     label: 'Online',
     textColor: 'text-emerald-400',
   },
   offline: {
-    dot: 'bg-red-400',
-    ring: 'bg-red-400',
+    dot: 'bg-red-500',
+    ring: 'bg-red-500',
     label: 'Offline',
     textColor: 'text-red-400',
   },
   idle: {
-    dot: 'bg-amber-400',
-    ring: 'bg-amber-400',
+    dot: 'bg-amber-500',
+    ring: 'bg-amber-500',
     label: 'Idle',
-    textColor: 'text-amber-400',
+    textColor: 'text-amber-300',
   },
 };
 

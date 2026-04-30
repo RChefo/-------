@@ -31,7 +31,7 @@ function SkeletonBase({ className, style }: { className?: string; style?: React.
       animate="animate"
       className={cn(
         'rounded-lg',
-        'bg-gradient-to-r from-white/[0.04] via-white/[0.08] to-white/[0.04]',
+        'bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800',
         'bg-[length:200%_100%]',
         className
       )}
@@ -54,7 +54,7 @@ export function Skeleton({ variant = 'line', className, width, height, lines = 1
     return (
       <div
         className={cn(
-          'bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6',
+          'bg-c2-elevated border border-c2-border rounded-2xl p-6',
           className
         )}
       >
@@ -97,7 +97,7 @@ export function Skeleton({ variant = 'line', className, width, height, lines = 1
 
 export function TableRowSkeleton({ cols = 5 }: { cols?: number }) {
   return (
-    <tr className="border-b border-white/[0.04]">
+    <tr className="border-b border-c2-border/60">
       {Array.from({ length: cols }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <SkeletonBase

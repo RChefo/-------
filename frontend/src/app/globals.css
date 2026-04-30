@@ -4,14 +4,55 @@
 
 @layer base {
   :root {
-    --font-inter: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --background: 222 24% 8%;
+    --foreground: 214 32% 93%;
+    --card: 222 22% 12%;
+    --card-foreground: 214 32% 93%;
+    --popover: 222 22% 11%;
+    --popover-foreground: 214 32% 93%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217 19% 18%;
+    --secondary-foreground: 214 32% 93%;
+    --muted: 217 19% 16%;
+    --muted-foreground: 215 16% 58%;
+    --accent: 217 19% 18%;
+    --accent-foreground: 214 32% 93%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 19% 24%;
+    --input: 217 19% 22%;
+    --ring: 217 91% 55%;
+    --radius: 0.625rem;
   }
 
+  /* Dark theme vars kept for scoped terminal / charts when needed */
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 263 70% 58%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 263 70% 58%;
+  }
+}
+
+@layer base {
   * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+    @apply border-border;
   }
 
   html {
@@ -19,276 +60,321 @@
   }
 
   body {
-    background-color: #06070d;
-    color: #e2e8f0;
-    font-family: var(--font-inter);
-    min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-c2-bg text-c2-text antialiased min-h-screen;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  ::selection {
+    @apply bg-blue-500/20 text-c2-text;
   }
 
-  ::-webkit-scrollbar-track {
-    background: #0c0d18;
-    border-radius: 3px;
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
 
-  ::-webkit-scrollbar-thumb {
-    background: rgba(124, 58, 237, 0.4);
-    border-radius: 3px;
-    transition: background 0.2s ease;
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(124, 58, 237, 0.7);
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgb(71 85 105 / 0.55);
+    border-radius: 4px;
   }
 
-  ::-webkit-scrollbar-corner {
-    background: #0c0d18;
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgb(100 116 139 / 0.65);
   }
 
-  /* Firefox scrollbar */
-  * {
+  /* Firefox */
+  .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(124, 58, 237, 0.4) #0c0d18;
+    scrollbar-color: rgb(71 85 105 / 0.55) transparent;
   }
 }
 
 @layer components {
-  /* Glass card */
+  /* Mesh background — subtle dot grid on dim shell */
+  .bg-mesh {
+    background-color: #12151c;
+    background-image:
+      radial-gradient(rgb(71 85 105 / 0.18) 1px, transparent 1px),
+      radial-gradient(rgb(71 85 105 / 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+  }
+
+  /* Snow-like shell cards (dim theme) */
   .glass-card {
-    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.07] rounded-2xl;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    @apply bg-c2-surface border border-c2-border rounded-xl shadow-card;
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.22),
+      0 1px 3px rgb(0 0 0 / 0.18);
   }
 
   .glass-card-hover {
-    @apply glass-card transition-all duration-300;
+    @apply transition-all duration-200 hover:border-slate-500 hover:shadow-md;
   }
 
-  .glass-card-hover:hover {
-    @apply border-white/[0.12] bg-white/[0.05];
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  .glass-inner {
+    @apply bg-c2-elevated border border-c2-border rounded-lg;
   }
 
-  /* Gradient text */
-  .gradient-text {
-    @apply bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent;
+  /* Inputs — focus ring */
+  .input-glass {
+    @apply bg-c2-elevated border border-c2-border rounded-lg px-3 py-2 text-sm text-c2-text placeholder:text-c2-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500;
+    @apply transition-all duration-150;
   }
 
-  .gradient-text-violet {
-    background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .gradient-text-emerald {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Glow effects */
-  .glow-violet {
-    box-shadow: 0 0 20px rgba(124, 58, 237, 0.4), 0 0 40px rgba(124, 58, 237, 0.2);
-  }
-
-  .glow-blue {
-    box-shadow: 0 0 20px rgba(79, 70, 229, 0.4), 0 0 40px rgba(79, 70, 229, 0.2);
-  }
-
-  .glow-green {
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), 0 0 40px rgba(16, 185, 129, 0.2);
-  }
-
-  .glow-red {
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4), 0 0 40px rgba(239, 68, 68, 0.2);
-  }
-
-  .glow-amber {
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4), 0 0 40px rgba(245, 158, 11, 0.2);
-  }
-
-  /* Input styles */
-  .c2-input {
-    @apply w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-c2-text
-           placeholder-c2-muted outline-none transition-all duration-200;
-  }
-
-  .c2-input:focus {
-    @apply border-violet-500/50 bg-white/[0.06];
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
-  }
-
-  /* Button styles */
+  /* Buttons — SnowUI-style (Community kit): 8px radius, 32–36px height, medium weight, 16px icons */
   .btn-primary {
-    @apply bg-gradient-to-r from-violet-600 to-indigo-600 text-white px-4 py-2.5 rounded-xl
-           text-sm font-medium transition-all duration-200 hover:from-violet-500 hover:to-indigo-500
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
-    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
-  }
-
-  .btn-primary:hover {
-    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.5);
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-transparent bg-blue-600 px-3.5 text-sm font-medium text-white;
+    @apply shadow-none transition-colors duration-150 hover:bg-blue-700 hover:shadow-sm active:bg-blue-800;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
   .btn-secondary {
-    @apply bg-white/[0.06] border border-white/[0.1] text-c2-text px-4 py-2.5 rounded-xl
-           text-sm font-medium transition-all duration-200 hover:bg-white/[0.1]
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-c2-border bg-c2-elevated px-3.5 text-sm font-medium text-c2-text;
+    @apply shadow-none transition-colors duration-150 hover:border-slate-500 hover:bg-c2-surface;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .btn-danger {
-    @apply bg-red-500/20 border border-red-500/30 text-red-400 px-4 py-2.5 rounded-xl
-           text-sm font-medium transition-all duration-200 hover:bg-red-500/30
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  .btn-toolbar {
+    @apply inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-c2-border bg-c2-elevated px-2.5 text-xs font-medium text-c2-muted;
+    @apply shadow-none transition-colors hover:bg-c2-surface hover:text-c2-text disabled:cursor-not-allowed disabled:opacity-50;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .btn-success {
-    @apply bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-4 py-2.5 rounded-xl
-           text-sm font-medium transition-all duration-200 hover:bg-emerald-500/30
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  .btn-toolbar-icon {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-c2-border bg-c2-elevated text-c2-muted shadow-none;
+    @apply transition-colors hover:bg-c2-surface hover:text-c2-text;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  /* Badge styles */
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  .btn-toolbar-danger {
+    @apply inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-red-800/50 bg-red-950/35 px-2.5 text-xs font-medium text-red-300 shadow-none;
+    @apply transition-colors hover:bg-red-950/55;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-blue {
-    @apply badge bg-blue-500/20 text-blue-400 border border-blue-500/30;
+  .btn-chip-blue {
+    @apply inline-flex h-8 items-center gap-2 rounded-lg border border-blue-600/35 bg-blue-950/40 px-2.5 text-xs font-medium text-blue-300 shadow-none transition-colors hover:bg-blue-950/60;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-purple {
-    @apply badge bg-purple-500/20 text-purple-400 border border-purple-500/30;
+  .btn-chip-cyan {
+    @apply inline-flex h-8 items-center gap-2 rounded-lg border border-cyan-600/35 bg-cyan-950/35 px-2.5 text-xs font-medium text-cyan-300 shadow-none transition-colors hover:bg-cyan-950/55;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-amber {
-    @apply badge bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  .btn-chip-emerald {
+    @apply inline-flex h-8 items-center gap-2 rounded-lg border border-emerald-600/35 bg-emerald-950/35 px-2.5 text-xs font-medium text-emerald-300 shadow-none transition-colors hover:bg-emerald-950/55;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-cyan {
-    @apply badge bg-cyan-500/20 text-cyan-400 border border-cyan-500/30;
+  .btn-chip-red {
+    @apply inline-flex h-8 items-center gap-2 rounded-lg border border-red-700/40 bg-red-950/35 px-2.5 text-xs font-medium text-red-300 shadow-none transition-colors hover:bg-red-950/55;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-green {
-    @apply badge bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  .btn-chip-amber {
+    @apply inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-amber-600/35 bg-amber-950/35 px-3.5 text-sm font-medium text-amber-200 shadow-none transition-colors hover:bg-amber-950/55;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
   }
 
-  .badge-gray {
-    @apply badge bg-slate-500/20 text-slate-400 border border-slate-500/30;
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg font-medium text-sm;
+    @apply text-c2-muted hover:text-c2-text hover:bg-c2-elevated transition-all duration-150;
   }
 
-  .badge-red {
-    @apply badge bg-red-500/20 text-red-400 border border-red-500/30;
+  /* Nav items — sidebar */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-c2-muted;
+    @apply hover:bg-c2-elevated hover:text-c2-text transition-all duration-150;
   }
 
-  /* Shimmer loading */
-  .shimmer {
-    background: linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.03) 0%,
-      rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0.03) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 2s linear infinite;
+  .nav-item-active {
+    @apply bg-blue-950/45 text-blue-300 shadow-sm border border-blue-800/40;
   }
 
-  /* Table styles */
-  .c2-table {
+  /* Tables */
+  .table-glass {
     @apply w-full text-sm;
   }
 
-  .c2-table thead tr {
-    @apply border-b border-white/[0.07];
+  .table-glass thead {
+    @apply bg-c2-elevated border-b border-c2-border;
   }
 
-  .c2-table thead th {
-    @apply px-4 py-3 text-left text-xs font-semibold text-c2-muted uppercase tracking-wider;
+  .table-glass th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-c2-muted;
+  }
+
+  .table-glass tbody tr {
+    @apply border-b border-c2-border/60 hover:bg-c2-elevated/80 transition-colors;
+  }
+
+  .table-glass td {
+    @apply px-4 py-3 text-slate-200;
+  }
+
+  /* Gradient text utility */
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 bg-clip-text text-transparent;
+  }
+
+  .gradient-text-violet {
+    @apply bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 bg-clip-text text-transparent;
+  }
+
+  .btn-danger {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-transparent bg-red-600 px-3.5 text-sm font-medium text-white shadow-none;
+    @apply transition-colors duration-150 hover:bg-red-700 active:bg-red-800 disabled:pointer-events-none disabled:opacity-50;
+    @apply [&_svg]:size-4 [&_svg]:shrink-0;
+  }
+
+  /* Form + data — shared with Clients / Telegram */
+  .c2-input {
+    @apply w-full rounded-lg border border-c2-border bg-c2-elevated px-4 py-2.5 text-sm text-c2-text;
+    @apply placeholder:text-c2-muted/70 outline-none transition-all duration-200;
+    @apply focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20;
+  }
+
+  .c2-table {
+    @apply w-full text-sm text-left border-collapse;
+  }
+
+  .c2-table thead {
+    @apply bg-c2-elevated border-b border-c2-border;
+  }
+
+  .c2-table th {
+    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-c2-muted;
   }
 
   .c2-table tbody tr {
-    @apply border-b border-white/[0.04] transition-colors duration-150;
+    @apply border-b border-c2-border/60 transition-colors;
   }
 
-  .c2-table tbody tr:hover {
-    @apply bg-white/[0.02];
+  .c2-table td {
+    @apply px-4 py-3 text-slate-200 align-middle;
   }
 
-  .c2-table tbody td {
-    @apply px-4 py-3 text-c2-text;
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border;
   }
 
-  /* Sidebar nav item */
-  .nav-item {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-           text-c2-muted transition-all duration-200 cursor-pointer;
+  .badge-blue {
+    @apply bg-blue-950/50 text-blue-300 border-blue-800/45;
   }
 
-  .nav-item:hover {
-    @apply bg-white/[0.05] text-c2-text;
+  .badge-purple {
+    @apply bg-violet-950/45 text-violet-300 border-violet-800/45;
   }
 
-  .nav-item.active {
-    @apply bg-violet-500/20 text-violet-300 border-l-2 border-violet-500;
-    box-shadow: inset 0 0 20px rgba(124, 58, 237, 0.1);
+  .badge-amber {
+    @apply bg-amber-950/45 text-amber-200 border-amber-800/45;
+  }
+
+  .badge-cyan {
+    @apply bg-cyan-950/45 text-cyan-300 border-cyan-800/45;
+  }
+
+  .badge-green {
+    @apply bg-emerald-950/45 text-emerald-300 border-emerald-800/45;
+  }
+
+  .badge-gray {
+    @apply bg-slate-800/80 text-slate-400 border-slate-600/80;
+  }
+
+  /* Skeleton shimmer */
+  .skeleton-shimmer {
+    @apply relative overflow-hidden bg-slate-800 rounded-lg;
+  }
+
+  .skeleton-shimmer::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(148 163 184 / 0.12),
+      transparent
+    );
+  }
+
+  /* Toast overrides */
+  .toast-success {
+    @apply bg-emerald-950/85 border-emerald-700/50 text-emerald-100;
+  }
+
+  .toast-error {
+    @apply bg-red-950/85 border-red-700/50 text-red-100;
+  }
+
+  /* Scrollbar inside dark panels (terminal, etc.) */
+  .scrollbar-dark::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-dark::-webkit-scrollbar-track {
+    background: rgb(15 23 42 / 0.35);
+    border-radius: 4px;
+  }
+
+  .scrollbar-dark::-webkit-scrollbar-thumb {
+    background: rgb(148 163 184 / 0.35);
+    border-radius: 4px;
+  }
+
+  .scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: rgb(148 163 184 / 0.55);
+  }
+
+  .scrollbar-dark {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.35) rgb(15 23 42 / 0.35);
+  }
+
+  /* Terminal panel — keep dark readability */
+  .terminal-panel {
+    background: linear-gradient(
+      145deg,
+      rgb(15 23 42) 0%,
+      rgb(17 24 39) 40%,
+      rgb(15 23 42) 100%
+    );
+    border: 1px solid rgb(51 65 85 / 0.85);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      0 12px 40px rgb(15 23 42 / 0.35);
+  }
+
+  .terminal-status-online {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    color: rgb(134 239 172);
+  }
+
+  .terminal-status-offline {
+    background: rgba(239 68 68 / 0.15);
+    border: 1px solid rgba(239 68 68 / 0.35);
+    color: rgb(252 165 165);
   }
 }
 
-@keyframes page-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+/* Leaflet map tweaks */
+.leaflet-container {
+  font-family: inherit;
 }
 
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(100%) scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
 }
 
-@keyframes toast-progress {
-  from { width: 100%; }
-  to   { width: 0%; }
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-
-  .page-enter {
-    animation: page-fade-in 200ms ease-out both;
-  }
-
-  .toast-slide-in {
-    animation: toast-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  }
-
-  .toast-progress {
-    animation: toast-progress 3.5s linear forwards;
-  }
-
-  .bg-mesh {
-    background:
-      radial-gradient(ellipse at 20% 20%, rgba(124,58,237,0.08) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 80%, rgba(79,70,229,0.05) 0%, transparent 50%),
-      #06070d;
-  }
-
-  .border-glow-violet {
-    border-color: rgba(124, 58, 237, 0.5);
-    box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2), 0 0 15px rgba(124, 58, 237, 0.15);
-  }
-}

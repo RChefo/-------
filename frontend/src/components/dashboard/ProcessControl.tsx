@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { Server, Bot, Play, Square, Loader2 } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { useToast } from '@/context/ToastContext';
 import { useProcessStatus } from '@/hooks/useApi';
@@ -32,28 +31,23 @@ function ProcessRow({ name, type, icon, status, onAction }: ProcessRowProps) {
   };
 
   return (
-    <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-c2-border bg-c2-elevated/90 px-4 py-3 transition-colors hover:border-slate-500 hover:bg-c2-surface">
+      <div className="flex min-w-0 items-center gap-3">
         <div
           className={cn(
-            'w-9 h-9 rounded-lg flex items-center justify-center',
+            'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border',
             isRunning
-              ? 'bg-emerald-500/20 border border-emerald-500/30'
-              : 'bg-red-500/10 border border-red-500/20'
+              ? 'border-emerald-700/40 bg-emerald-950/35'
+              : 'border-red-700/40 bg-red-950/35'
           )}
         >
-          <span className={isRunning ? 'text-emerald-400' : 'text-red-400'}>
-            {icon}
-          </span>
+          <span className={isRunning ? 'text-emerald-400' : 'text-red-400'}>{icon}</span>
         </div>
 
-        <div>
-          <p className="text-sm font-semibold text-white">{name}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <StatusDot
-              status={isRunning ? 'online' : 'offline'}
-              size="sm"
-            />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-c2-text">{name}</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <StatusDot status={isRunning ? 'online' : 'offline'} size="sm" />
             <span
               className={cn(
                 'text-xs font-medium',
@@ -66,38 +60,32 @@ function ProcessRow({ name, type, icon, status, onAction }: ProcessRowProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <motion.button
-          whileHover={{ scale: loading ? 1 : 1.05 }}
-          whileTap={{ scale: loading ? 1 : 0.95 }}
-          onClick={handleAction}
-          disabled={loading}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium',
-            'transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed',
-            isRunning
-              ? 'bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30'
-              : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30'
-          )}
-        >
-          {loading ? (
-            <>
-              <Loader2 size={12} className="animate-spin" />
-              <span>{isRunning ? 'Stopping...' : 'Starting...'}</span>
-            </>
-          ) : isRunning ? (
-            <>
-              <Square size={12} />
-              <span>Stop</span>
-            </>
-          ) : (
-            <>
-              <Play size={12} />
-              <span>Start</span>
-            </>
-          )}
-        </motion.button>
-      </div>
+      <button
+        type="button"
+        onClick={handleAction}
+        disabled={loading}
+        className={cn(
+          'flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-50',
+          isRunning ? 'btn-chip-red' : 'btn-chip-emerald'
+        )}
+      >
+        {loading ? (
+          <>
+            <Loader2 size={12} className="animate-spin" />
+            <span>{isRunning ? 'Stopping...' : 'Starting...'}</span>
+          </>
+        ) : isRunning ? (
+          <>
+            <Square size={12} />
+            <span>Stop</span>
+          </>
+        ) : (
+          <>
+            <Play size={12} />
+            <span>Start</span>
+          </>
+        )}
+      </button>
     </div>
   );
 }
@@ -122,36 +110,29 @@ export function ProcessControl() {
   };
 
   return (
-    <GlassCard className="h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
-          <Server size={16} className="text-amber-400" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-white">Process Control</h3>
-          <p className="text-xs text-c2-muted">Manage backend processes</p>
-        </div>
-      </div>
-
-      {/* Process rows */}
-      <div className="space-y-3">
-        <ProcessRow
-          name="C2 Server"
-          type="server"
-          icon={<Server size={16} />}
-          status={processStatus?.server}
-          onAction={handleAction}
-        />
-        <ProcessRow
-          name="Telegram Bot"
-          type="bot"
-          icon={<Bot size={16} />}
-          status={processStatus?.bot}
-          onAction={handleAction}
-        />
-      </div>
-    </GlassCard>
+    <SectionCard
+      icon={Server}
+      iconBoxClassName="border-amber-800/35 bg-amber-950/35"
+      iconClassName="text-amber-400"
+      title="Process Control"
+      description="Manage backend processes"
+      bodyClassName="flex flex-col gap-3"
+    >
+      <ProcessRow
+        name="C2 Server"
+        type="server"
+        icon={<Server size={18} />}
+        status={processStatus?.server}
+        onAction={handleAction}
+      />
+      <ProcessRow
+        name="Telegram Bot"
+        type="bot"
+        icon={<Bot size={18} />}
+        status={processStatus?.bot}
+        onAction={handleAction}
+      />
+    </SectionCard>
   );
 }
 

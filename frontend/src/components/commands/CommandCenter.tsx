@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown, Loader2, RotateCcw, ShieldAlert, Terminal,
   KeyRound, Eye, EyeOff, Trash2, Download, FolderOpen,
+  Check, X, Ellipsis,
 } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import { useToast } from '@/context/ToastContext';
@@ -28,13 +29,12 @@ function statusColor(s: string) {
   }
 }
 
-function statusLabel(s: string) {
-  switch (s?.toLowerCase()) {
-    case 'done':    return '✓';
-    case 'error':   return '✗';
-    case 'running': return '●';
-    default:        return '…';
-  }
+function StatusIcon({ status }: { status: string }) {
+  const s = status?.toLowerCase();
+  if (s === 'done') return <Check size={12} className="text-emerald-400" strokeWidth={2.5} aria-hidden />;
+  if (s === 'error') return <X size={12} className="text-red-400" strokeWidth={2.5} aria-hidden />;
+  if (s === 'running') return <Loader2 size={12} className="animate-spin text-sky-400" aria-hidden />;
+  return <Ellipsis size={12} className="text-amber-300" aria-hidden />;
 }
 
 /** Poll command row until done — checks immediately, then every `intervalMs` (single GET per tick). */
@@ -101,8 +101,8 @@ function TerminalEntry({
         <span style={{ color: '#ff5c57' }}>└─</span>
         <span style={{ color: promptColor }}>{promptChar}</span>
         <span className="text-white flex-1 break-all">{cmd.command}</span>
-        <span className="text-[11px] font-bold ml-1" style={{ color: col }}>
-          {statusLabel(cmd.status)}
+        <span className="ml-1 flex items-center opacity-90" aria-label={cmd.status}>
+          <StatusIcon status={cmd.status} />
         </span>
       </div>
       {/* Output */}
@@ -181,7 +181,7 @@ export function CommandCenter() {
       await api.updateServerConfig({ sudo_password: sudoPassword.trim() });
       setHasSudoPassword(true);
       setSudoPassword('');
-      toast.success('Sudo password saved — sudo mode ready', 'Saved ✓');
+      toast.success('Sudo password saved — sudo mode ready', 'Saved');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       toast.error(`Failed to save — ${msg}`, 'Error');
@@ -214,7 +214,7 @@ export function CommandCenter() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`Downloaded: ${filename}`, 'Done ✓');
+      toast.success(`Downloaded: ${filename}`, 'Done');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       toast.error(`Download failed — ${msg}`, 'Error');
@@ -251,9 +251,9 @@ export function CommandCenter() {
       if (res.download_path) {
         await handleDownload(res.download_path);
       } else if (res.result !== undefined) {
-        toast.success(`Executed on ${selectedClient}`, 'Done ✓');
+        toast.success(`Executed on ${selectedClient}`, 'Done');
       } else {
-        toast.success(`Queued for ${selectedClient}`, 'Queued ✓');
+        toast.success(`Queued for ${selectedClient}`, 'Queued');
       }
       setCommand('');
       await refreshHistory();
@@ -289,7 +289,7 @@ export function CommandCenter() {
 
       {/* ── Terminal window ── */}
       <div
-        className="rounded-xl overflow-hidden shadow-2xl border border-white/[0.07]"
+        className="rounded-xl overflow-hidden border border-slate-700 shadow-xl"
         style={{ background: termBg, fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}
       >
         {/* ── Window title bar ── */}

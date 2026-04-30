@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className={`${inter.variable} font-sans antialiased bg-c2-bg text-c2-text`}>
         <SWRProvider>
           <ToastProvider>

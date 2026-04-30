@@ -11,9 +11,8 @@ import {
   ResponsiveContainer,
   type TooltipProps,
 } from 'recharts';
-import { motion } from 'framer-motion';
 import { Activity } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { buildActivityData } from '@/lib/utils';
 import type { Log } from '@/types';
@@ -27,13 +26,25 @@ function CustomTooltip({ active, payload, label }: TooltipProps<number, string>)
   if (!active || !payload || !payload.length) return null;
 
   return (
-    <div className="bg-c2-surface border border-white/[0.1] rounded-xl px-3 py-2.5 shadow-2xl backdrop-blur-xl">
-      <p className="text-xs text-c2-muted mb-1">{label}</p>
-      <p className="text-sm font-bold text-white">
+    <div className="rounded-xl border border-c2-border bg-c2-elevated px-3 py-2.5 shadow-lg">
+      <p className="mb-1 text-xs text-c2-muted">{label}</p>
+      <p className="text-sm font-semibold text-c2-text">
         {payload[0]?.value ?? 0}{' '}
-        <span className="text-violet-400 font-normal text-xs">events</span>
+        <span className="text-xs font-normal text-blue-400">events</span>
       </p>
     </div>
+  );
+}
+
+function LivePill() {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-c2-border bg-c2-elevated px-3 py-1 text-xs font-medium text-c2-muted">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+      </span>
+      Live
+    </span>
   );
 }
 
@@ -42,72 +53,66 @@ export function ActivityChart({ logs, isLoading = false }: ActivityChartProps) {
 
   if (isLoading) {
     return (
-      <GlassCard className="h-full min-h-[280px]">
-        <div className="flex items-center gap-3 mb-6">
-          <Skeleton variant="circle" className="w-8 h-8" />
-          <Skeleton className="h-5 w-40" />
+      <SectionCard
+        icon={Activity}
+        iconBoxClassName="border-blue-800/35 bg-blue-950/40"
+        iconClassName="text-blue-400"
+        title="Activity (24h)"
+        description="Event frequency by hour"
+        action={<LivePill />}
+        bodyClassName="space-y-6"
+      >
+        <div className="flex gap-3">
+          <Skeleton variant="circle" className="h-10 w-10" />
+          <div className="flex flex-1 flex-col justify-center gap-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-56" />
+          </div>
         </div>
-        <Skeleton className="h-48 w-full rounded-xl" />
-      </GlassCard>
+        <Skeleton className="h-52 w-full rounded-xl" />
+      </SectionCard>
     );
   }
 
   return (
-    <GlassCard className="h-full min-h-[280px] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
-            <Activity size={16} className="text-violet-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-white">Activity (24h)</h3>
-            <p className="text-xs text-c2-muted">Event frequency by hour</p>
-          </div>
-        </div>
-        {/* Glow dot */}
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-          <span className="text-xs text-c2-muted">Live</span>
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div className="flex-1 min-h-[180px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={data}
-            margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
-          >
+    <SectionCard
+      icon={Activity}
+      iconBoxClassName="border-blue-800/35 bg-blue-950/40"
+      iconClassName="text-blue-400"
+      title="Activity (24h)"
+      description="Event frequency by hour"
+      action={<LivePill />}
+      bodyClassName="px-4 pb-5 pt-1"
+    >
+      <div className="min-h-[220px] w-full">
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
-              <linearGradient id="violetGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+              <linearGradient id="areaFillBlue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.28} />
+                <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
               </linearGradient>
-              <linearGradient id="strokeGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#7c3aed" />
-                <stop offset="100%" stopColor="#4f46e5" />
+              <linearGradient id="areaStrokeBlue" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#2563eb" />
+                <stop offset="100%" stopColor="#0ea5e9" />
               </linearGradient>
             </defs>
 
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.04)"
-              vertical={false}
-            />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgb(51 65 85 / 0.55)" vertical={false} />
 
             <XAxis
               dataKey="hour"
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
               interval={3}
             />
 
             <YAxis
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
+              width={36}
               allowDecimals={false}
             />
 
@@ -116,21 +121,21 @@ export function ActivityChart({ logs, isLoading = false }: ActivityChartProps) {
             <Area
               type="monotone"
               dataKey="count"
-              stroke="url(#strokeGradient)"
+              stroke="url(#areaStrokeBlue)"
               strokeWidth={2}
-              fill="url(#violetGradient)"
+              fill="url(#areaFillBlue)"
               dot={false}
               activeDot={{
                 r: 4,
-                fill: '#7c3aed',
-                stroke: '#fff',
-                strokeWidth: 1,
+                fill: '#2563eb',
+                stroke: '#1a1f2e',
+                strokeWidth: 2,
               }}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-    </GlassCard>
+    </SectionCard>
   );
 }
 

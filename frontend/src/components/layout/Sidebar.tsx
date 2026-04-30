@@ -50,12 +50,12 @@ function Tooltip({ label, children }: TooltipProps) {
             exit={{ opacity: 0, x: -5 }}
             transition={{ duration: 0.15 }}
             className="absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50
-                       bg-c2-surface border border-white/[0.1] rounded-lg px-3 py-1.5
-                       text-sm text-white whitespace-nowrap pointer-events-none
+                       bg-c2-elevated border border-c2-border rounded-lg px-3 py-1.5
+                       text-sm text-c2-text whitespace-nowrap pointer-events-none
                        shadow-xl"
           >
             {label}
-            <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-c2-surface" />
+            <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-c2-elevated" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -68,7 +68,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: processStatus } = useProcessStatus();
 
-  const sidebarWidth = collapsed ? 72 : 240;
+  const sidebarWidth = collapsed ? 80 : 280;
 
   return (
     <motion.aside
@@ -76,18 +76,15 @@ export function Sidebar() {
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       className={cn(
         'relative flex flex-col h-full',
-        'bg-c2-surface border-r border-white/[0.07]',
+        'bg-c2-sidebar border-r border-c2-border',
         'overflow-hidden flex-shrink-0'
       )}
     >
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-radial-violet pointer-events-none" />
-
       <div className="relative flex flex-col h-full z-10">
         {/* Logo */}
         <div
           className={cn(
-            'flex items-center h-16 px-4 border-b border-white/[0.07]',
+            'flex items-center h-[72px] px-4 border-b border-c2-border',
             collapsed ? 'justify-center' : 'gap-3'
           )}
         >
@@ -101,7 +98,7 @@ export function Sidebar() {
                 className="overflow-hidden"
               >
                 <div className="whitespace-nowrap">
-                  <p className="text-sm font-bold text-white">C2 Control</p>
+                  <p className="text-sm font-bold text-c2-text">C2 Control</p>
                   <p className="text-xs text-c2-muted">Security Dashboard</p>
                 </div>
               </motion.div>
@@ -110,7 +107,12 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
+          {!collapsed && (
+            <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wider text-c2-muted">
+              Menu
+            </p>
+          )}
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -121,22 +123,19 @@ export function Sidebar() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   className={cn(
-                    'flex items-center h-10 rounded-xl text-sm font-medium',
+                    'flex h-10 cursor-pointer items-center rounded-lg text-sm font-medium',
                     'transition-all duration-200 cursor-pointer relative overflow-hidden',
                     collapsed ? 'justify-center px-0' : 'gap-3 px-3',
                     isActive
-                      ? 'bg-violet-500/20 text-violet-300'
-                      : 'text-c2-muted hover:bg-white/[0.05] hover:text-c2-text'
+                      ? 'bg-blue-950/45 text-blue-300 border border-blue-800/40 shadow-none'
+                      : 'text-c2-muted hover:bg-c2-elevated hover:text-c2-text'
                   )}
                 >
                   {/* Active left border indicator */}
                   {isActive && (
                     <motion.div
                       layoutId="activeNav"
-                      className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-violet-500"
-                      style={{
-                        boxShadow: '0 0 8px rgba(124,58,237,0.8)',
-                      }}
+                      className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-blue-500"
                     />
                   )}
 
@@ -145,7 +144,7 @@ export function Sidebar() {
                     size={18}
                     className={cn(
                       'flex-shrink-0 transition-colors',
-                      isActive ? 'text-violet-400' : ''
+                      isActive ? 'text-blue-400' : ''
                     )}
                   />
 
@@ -178,7 +177,7 @@ export function Sidebar() {
         </nav>
 
         {/* Process Status */}
-        <div className={cn('px-3 py-3 border-t border-white/[0.07] space-y-2')}>
+        <div className={cn('px-3 py-3 border-t border-c2-border space-y-2')}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-2 py-1">
               <Tooltip label={`Server: ${processStatus?.server || 'unknown'}`}>
@@ -223,17 +222,13 @@ export function Sidebar() {
         </div>
 
         {/* Collapse button */}
-        <div className="px-3 pb-4 border-t border-white/[0.07] pt-3">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+        <div className="px-3 pb-4 border-t border-c2-border pt-3">
+          <button
+            type="button"
             onClick={() => setCollapsed(!collapsed)}
             className={cn(
-              'w-full flex items-center h-9 rounded-xl',
-              'bg-white/[0.04] hover:bg-white/[0.08]',
-              'border border-white/[0.07] text-c2-muted hover:text-c2-text',
-              'transition-all duration-200',
-              collapsed ? 'justify-center' : 'justify-between px-3'
+              'btn-toolbar w-full text-c2-muted hover:text-c2-text',
+              collapsed ? 'justify-center px-0' : 'justify-between px-3'
             )}
           >
             {!collapsed && <span className="text-xs">Collapse</span>}
@@ -242,7 +237,7 @@ export function Sidebar() {
             ) : (
               <ChevronLeft size={14} />
             )}
-          </motion.button>
+          </button>
         </div>
       </div>
     </motion.aside>

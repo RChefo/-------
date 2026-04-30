@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { LucideIcon } from 'lucide-react';
@@ -31,8 +30,8 @@ export function StatCard({
   value,
   icon: Icon,
   iconColor = 'text-violet-400',
-  iconBg = 'from-violet-500/20 to-indigo-500/20',
-  borderColor = 'border-l-violet-500/50',
+  iconBg = 'from-violet-500/25 to-indigo-600/10',
+  borderColor: _borderColor,
   trend,
   isLoading = false,
   formatValue,
@@ -40,79 +39,69 @@ export function StatCard({
   className,
 }: StatCardProps) {
   if (isLoading) {
-    return <Skeleton variant="card" className={className} />;
+    return (
+      <div
+        className={cn(
+          'h-[124px] rounded-2xl border border-c2-border bg-c2-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.18)]',
+          className
+        )}
+      >
+        <div className="flex justify-between gap-3">
+          <div className="flex flex-1 flex-col gap-3">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-8 w-20" />
+          </div>
+          <Skeleton className="h-11 w-11 flex-shrink-0 rounded-xl" />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className={cn('h-full', className)}>
-      <GlassCard
-        hover
-        glow="violet"
-        className={cn(
-          'h-full border-l-2',
-          borderColor,
-          'group'
-        )}
-        whileHover={{ scale: 1.02, y: -2 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      >
-        <div className="flex items-start justify-between">
-          {/* Icon */}
-          <div
-            className={cn(
-              'w-12 h-12 rounded-xl flex items-center justify-center',
-              'bg-gradient-to-br',
-              iconBg,
-              'border border-white/[0.08]',
-              'group-hover:scale-110 transition-transform duration-300'
-            )}
-          >
-            <Icon size={22} className={iconColor} />
-          </div>
-
-          {/* Trend */}
-          {trend && (
-            <div
-              className={cn(
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium',
-                trend.direction === 'up'
-                  ? 'bg-emerald-500/10 text-emerald-400'
-                  : 'bg-red-500/10 text-red-400'
-              )}
-            >
-              {trend.direction === 'up' ? (
-                <TrendingUp size={12} />
-              ) : (
-                <TrendingDown size={12} />
-              )}
-              {trend.value}%
-            </div>
-          )}
-        </div>
-
-        {/* Value */}
-        <div className="mt-4">
-          <div className="text-3xl font-bold text-white tracking-tight">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className={cn(
+        'flex h-full min-h-[124px] flex-col justify-between rounded-2xl border border-c2-border bg-c2-surface p-5',
+        'shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-shadow duration-200 hover:shadow-md',
+        className
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-c2-muted">{label}</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight text-c2-text">
             <AnimatedCounter value={value} formatValue={formatValue} />
           </div>
-          <p className="text-sm text-c2-muted mt-1 font-medium">{label}</p>
         </div>
-
-        {/* Trend label */}
-        {trend?.label && (
-          <p className="text-xs text-c2-muted mt-2">{trend.label}</p>
-        )}
-
-        {/* Decorative gradient bar */}
         <div
           className={cn(
-            'absolute bottom-0 left-0 right-0 h-px rounded-b-2xl opacity-30',
-            'bg-gradient-to-r',
+            'flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br',
             iconBg
           )}
-        />
-      </GlassCard>
-    </div>
+        >
+          <Icon size={20} className={iconColor} />
+        </div>
+      </div>
+
+      {trend && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium',
+              trend.direction === 'up'
+                ? 'border-emerald-700/40 bg-emerald-950/40 text-emerald-300'
+                : 'border-red-700/40 bg-red-950/40 text-red-300'
+            )}
+          >
+            {trend.direction === 'up' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+            {trend.value}%
+          </span>
+          {trend.label && <span className="text-xs text-c2-muted">{trend.label}</span>}
+        </div>
+      )}
+    </motion.div>
   );
 }
 

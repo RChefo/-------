@@ -33,28 +33,28 @@ export function useToast(): ToastContextValue {
 
 const TOAST_COLORS: Record<ToastType, { bg: string; border: string; icon: string; iconColor: string }> = {
   success: {
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
-    icon: 'bg-emerald-500/20',
-    iconColor: 'text-emerald-400',
+    bg: 'bg-emerald-950/90',
+    border: 'border-emerald-700/45',
+    icon: 'bg-emerald-900/55',
+    iconColor: 'text-emerald-300',
   },
   error: {
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/30',
-    icon: 'bg-red-500/20',
-    iconColor: 'text-red-400',
+    bg: 'bg-red-950/90',
+    border: 'border-red-700/45',
+    icon: 'bg-red-900/55',
+    iconColor: 'text-red-300',
   },
   info: {
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/30',
-    icon: 'bg-blue-500/20',
-    iconColor: 'text-blue-400',
+    bg: 'bg-slate-900/95',
+    border: 'border-blue-700/45',
+    icon: 'bg-blue-950/55',
+    iconColor: 'text-blue-300',
   },
   warning: {
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/30',
-    icon: 'bg-amber-500/20',
-    iconColor: 'text-amber-400',
+    bg: 'bg-amber-950/90',
+    border: 'border-amber-700/45',
+    icon: 'bg-amber-900/55',
+    iconColor: 'text-amber-200',
   },
 };
 
@@ -71,7 +71,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
   return (
     <div
       className={cn(
-        'relative flex items-start gap-3 p-4 rounded-xl border backdrop-blur-xl',
+        'relative flex items-start gap-3 p-4 rounded-xl border backdrop-blur-sm shadow-lg',
         'min-w-[300px] max-w-[380px] shadow-2xl cursor-default select-none',
         'toast-slide-in',
         colors.bg,
@@ -94,15 +94,15 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
       {/* Content */}
       <div className="flex-1 min-w-0">
         {toast.title && (
-          <p className="text-sm font-semibold text-white mb-0.5">{toast.title}</p>
+          <p className="mb-0.5 text-sm font-semibold text-c2-text">{toast.title}</p>
         )}
-        <p className="text-sm text-slate-300 leading-relaxed">{toast.message}</p>
+        <p className="text-sm leading-relaxed text-c2-muted">{toast.message}</p>
       </div>
 
       {/* Close button */}
       <button
         onClick={() => onRemove(toast.id)}
-        className="flex-shrink-0 text-slate-500 hover:text-slate-300 transition-colors mt-0.5"
+        className="mt-0.5 flex-shrink-0 text-c2-muted transition-colors hover:text-c2-text"
       >
         <X size={14} />
       </button>
