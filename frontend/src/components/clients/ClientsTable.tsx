@@ -168,8 +168,14 @@ export function ClientsTable() {
               <h2 className="text-base font-bold text-white">Connected Clients</h2>
               <p className="text-xs text-c2-muted">
                 {isLoading ? 'Loading...' : (() => {
-                  const n = clients.filter(c => !c.is_server).length;
-                  return `${n} client${n !== 1 ? 's' : ''} registered`;
+                  const total = clients.length;
+                  if (total === 0) return 'No clients connected';
+                  const remotes = clients.filter((c) => !c.is_server).length;
+                  const srv = total - remotes;
+                  const bits: string[] = [];
+                  if (srv) bits.push(`${srv} server agent${srv !== 1 ? 's' : ''}`);
+                  if (remotes) bits.push(`${remotes} remote`);
+                  return bits.join(' · ') || `${total} connected`;
                 })()}
               </p>
             </div>
