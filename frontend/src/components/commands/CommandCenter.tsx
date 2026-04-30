@@ -37,6 +37,28 @@ function statusLabel(s: string) {
   }
 }
 
+/** يستعلم عن سجل الأوامر حتى يُحدَّث الصف (نتيجة التيليجرام لا تأتي في أول refresh). */
+async function pollUntilCommandSettles(
+  commandId: number,
+  refreshHistory: () => Promise<unknown>,
+  maxAttempts = 45,
+  intervalMs = 2000,
+): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    await refreshHistory();
+    try {
+      const hist = await api.getCommandHistory();
+      const row = hist.find(h => Number(h.id) === Number(commandId));
+      if (row && row.status !== 'pending' && row.status !== 'running') {
+        return;
+      }
+    } catch {
+      /* استمر */
+    }
+  }
+}
+
 /* ─── Single terminal block ─────────────────────────────────────── */
 function TerminalEntry({
   cmd, serverUser, serverHostname,
@@ -233,6 +255,15 @@ export function CommandCenter() {
       }
       setCommand('');
       await refreshHistory();
+
+      const asyncRemote = ['sent_via_telegram', 'queued', 'sent'];
+      if (
+        res.command_id != null &&
+        res.status &&
+        asyncRemote.includes(String(res.status))
+      ) {
+        void pollUntilCommandSettles(res.command_id, refreshHistory);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       toast.error(`Failed to send — ${msg}`, 'Error');

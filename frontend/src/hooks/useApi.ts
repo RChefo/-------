@@ -57,7 +57,8 @@ export function useCommandHistory() {
   const { data, isLoading, error, mutate } = useSWR<Command[]>(
     `${API_BASE}/commands/history`,
     fetcher,
-    { ...BASE_OPTS, refreshInterval: REFRESH.NORMAL }
+    /* أوامر التيليجرام تصل متأخرًا قليلًا — تحديث أسرع من السجلات العادية */
+    { ...BASE_OPTS, refreshInterval: 5_000 }
   );
   return { data: data ?? [], isLoading, error, mutate };
 }
