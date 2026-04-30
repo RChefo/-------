@@ -7,3 +7,4 @@ node_modules/
 __pycache__/
 *.pyc
 malware-OLD.py
+c2-OLD.py

